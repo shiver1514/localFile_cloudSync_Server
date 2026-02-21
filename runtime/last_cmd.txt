@@ -1,0 +1,1 @@
+POST /api/actions/run-once (trigger legacy sync)

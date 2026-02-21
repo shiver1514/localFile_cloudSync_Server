@@ -1,0 +1,43 @@
+server:
+  host: 127.0.0.1
+  port: 19333
+  poll_interval_sec: 300
+
+auth:
+  app_id: ""
+  app_secret: ""
+  timeout_sec: 30
+  token_priority:
+    - user
+    - tenant
+  user_token_file: "/home/n150/.openclaw/backups/redefine-20260221-003711/workspace/skills/feishu-user-auth/user_tokens.json"
+  env_file: "/home/n150/.openclaw/backups/redefine-20260221-003711/workspace/skills/feishu-user-auth/.env"
+
+sync:
+  local_root: /home/n150/openclaw_workspace/search_docs
+  remote_folder_token: ""
+  conflict_policy: keep_both
+  initial_sync_strategy: local_wins
+  default_sync_direction: remote_wins
+  poll_interval_sec: 300
+  remote_recycle_bin: SyncRecycleBin
+  local_trash_dir: .sync_trash
+  exclude_dirs:
+    - .git
+    - .sync_trash
+    - .sync_quarantine
+    - .local_state
+    - __pycache__
+  max_retry: 5
+  mappings:
+    - name: search_docs_root
+      local_path: /home/n150/openclaw_workspace/search_docs
+      remote_folder_token: ""
+      enabled: true
+
+logging:
+  level: INFO
+  file: /home/n150/openclaw_workspace/feishu_sync_service/logs/service.log
+
+database:
+  path: /home/n150/openclaw_workspace/feishu_sync_service/data/service.db

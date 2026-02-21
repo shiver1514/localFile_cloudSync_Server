@@ -1,0 +1,26 @@
+auth:
+  app_id: ''
+  app_secret: ''
+  user_token_file: /home/n150/.openclaw/backups/redefine-20260221-003711/workspace/skills/feishu-user-auth/user_tokens.json
+  timeout_sec: 30
+sync:
+  local_root: /home/n150/openclaw_workspace/search_docs
+  remote_folder_token: ''
+  poll_interval_sec: 300
+  default_sync_direction: remote_wins
+  initial_sync_strategy: local_wins
+  remote_recycle_bin: SyncRecycleBin
+  local_trash_dir: .sync_trash
+  exclude_dirs:
+  - .git
+  - .sync_trash
+  - .sync_quarantine
+  - .local_state
+  - __pycache__
+logging:
+  level: INFO
+  file: /home/n150/openclaw_workspace/localFile_cloudSync_Server/runtime/service.log
+database:
+  path: /home/n150/openclaw_workspace/localFile_cloudSync_Server/runtime/service.db
+web_bind_host: 0.0.0.0
+web_port: 8765

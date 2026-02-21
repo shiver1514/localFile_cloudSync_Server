@@ -1,0 +1,16 @@
+{
+  "run_id": 6,
+  "local_root": "/home/n150/openclaw_workspace/search_docs",
+  "remote_root_token": "nodcnOdnyA0RGsq6YBA1LKFlkkb",
+  "local_total": 18,
+  "remote_total": 18,
+  "uploaded": 1,
+  "downloaded": 17,
+  "renamed": 0,
+  "conflicts": 0,
+  "remote_soft_deleted": 0,
+  "local_soft_deleted": 0,
+  "retry_success": 0,
+  "retry_failed": 0,
+  "errors": 0
+}

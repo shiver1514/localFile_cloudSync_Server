@@ -1,0 +1,15 @@
+[Unit]
+Description=localFile_cloudSync web service (M1)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/n150/openclaw_workspace/localFile_cloudSync_Server/app
+ExecStart=/home/n150/openclaw_workspace/localFile_cloudSync_Server/venv/bin/python -m localfilesync.web.main
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=ALLOWED_NETS=127.0.0.1/32,192.168.0.0/16,10.0.0.0/8
+
+[Install]
+WantedBy=default.target

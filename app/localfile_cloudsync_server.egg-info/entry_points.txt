@@ -1,0 +1,3 @@
+[console_scripts]
+localfilesync-cli = localfilesync.cli.main:main
+localfilesync-web = localfilesync.web.main:main

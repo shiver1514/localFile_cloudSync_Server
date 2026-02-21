@@ -1,0 +1,6 @@
+{
+  "percent": 85,
+  "phase": "M1: run-once 返回 summary + Feishu 状态页 + 可安装 entrypoints",
+  "eta": "~15min",
+  "note": "已完成：/api/actions/run-once 直接返回结果并落盘；/api/status/feishu；首页展示 run summary & feishu status；systemd 模板与切换脚本已生成"
+}

@@ -1,0 +1,9 @@
+2026-02-21 17:48:18 PYTHONPATH=app python -m app.cli.main config-show
+2026-02-21 17:48:18 POST /api/actions/run-once (trigger legacy sync)
+2026-02-21 17:55:10 DEVSTEP: implement run-once summary endpoint
+2026-02-21 18:25:42 POST /api/actions/run-once (trigger legacy sync)
+2026-02-21 18:27:36 POST /api/actions/run-once (trigger legacy sync)
+2026-02-21 18:27:56 POST /api/actions/run-once (trigger legacy sync)
+2026-02-21 18:29:14 POST /api/actions/run-once (trigger legacy sync)
+2026-02-21 18:55:54 POST /api/actions/run-once (trigger legacy sync)
+2026-02-21 19:08:08 POST /api/actions/run-once (trigger legacy sync)

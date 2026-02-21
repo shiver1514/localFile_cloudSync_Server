@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "localfile-cloudsync-server"
+version = "0.1.0"
+description = "Local↔Cloud (Feishu/DingTalk) sync service with CLI + Web UI"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.100",
+  "pydantic>=2.0",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+  "rich>=13.0",
+  "typer>=0.12",
+  "uvicorn>=0.23",
+]
+
+[project.scripts]
+localfilesync-cli = "localfilesync.cli.main:main"
+localfilesync-web = "localfilesync.web.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "localfilesync*"]
+
+[tool.black]
+line-length = 100
