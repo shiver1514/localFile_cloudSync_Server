@@ -358,6 +358,7 @@ def home():
         font-weight: 700;
       }
       .badge.idle { background: #e2e8f0; color: #334155; }
+      .badge.loading { background: #dbeafe; color: #1d4ed8; }
       .badge.running { background: #ffedd5; color: #9a3412; }
       .badge.success { background: #dcfce7; color: #166534; }
       .badge.failed { background: #fee2e2; color: #991b1b; }
@@ -533,7 +534,7 @@ def home():
       </div>
 
       __SCOPE_BANNER__
-      <div id="globalMsg" class="global-msg info">准备就绪。</div>
+      <div id="globalMsg" class="global-msg info">正在加载面板...</div>
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label">飞书连接</div>
@@ -542,9 +543,9 @@ def home():
             <div id="topFeishuState" class="stat-value">检测中</div>
           </div>
         </div>
-        <div class="stat-card"><div class="stat-label">自动同步</div><div id="topAutoSyncState" class="stat-value">检测中</div></div>
+        <div class="stat-card"><div class="stat-label">自动同步</div><div id="topAutoSyncState" class="stat-value info">获取中</div></div>
         <div class="stat-card"><div class="stat-label">服务状态</div><div id="topServiceState" class="stat-value">检测中</div></div>
-        <div class="stat-card"><div class="stat-label">最近同步</div><div id="topLastRunState" class="stat-value">待加载</div></div>
+        <div class="stat-card"><div class="stat-label">最近同步</div><div id="topLastRunState" class="stat-value info">获取中</div></div>
       </div>
 
       <div class="tabs">
@@ -599,6 +600,21 @@ def home():
               <label class="full">Remote Folder Token（sync.remote_folder_token，可空）
                 <input id="fRemoteFolderToken" autocomplete="off" />
               </label>
+              <label>远端删除策略（sync.remote_delete_mode）
+                <select id="fRemoteDeleteMode">
+                  <option value="recycle_bin">recycle_bin（移入回收目录）</option>
+                  <option value="hard_delete">hard_delete（永久删除）</option>
+                </select>
+                <div class="hint">建议日常用 recycle_bin；彻底镜像可选 hard_delete。</div>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;">
+                <input id="fCleanupEmptyRemoteDirs" type="checkbox" style="width:auto;margin:0;" />
+                同步后清理远端空目录（sync.cleanup_empty_remote_dirs）
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;">
+                <input id="fCleanupRemoteMissingDirsRecursive" type="checkbox" style="width:auto;margin:0;" />
+                缺失目录递归删除（sync.cleanup_remote_missing_dirs_recursive）
+              </label>
               <label class="full">redirect_uri（授权回调地址）
                 <input id="fRedirectUri" value="https://open.feishu.cn/connect/confirm_success" autocomplete="off" />
               </label>
@@ -613,7 +629,7 @@ def home():
               <button class="secondary" id="btnExchangeCode">提交 code 交换 token</button>
               <button class="secondary" id="btnRefreshToken">刷新 user_access_token</button>
             </div>
-            <div id="configState" class="action-state" style="margin-top:8px;">等待配置操作</div>
+            <div id="configState" class="action-state loading" style="margin-top:8px;">配置状态获取中...</div>
 
             <label style="margin-top:10px;">
               auth_url
@@ -628,7 +644,7 @@ def home():
             </p>
             <table class="kv" id="configTable">
               <tbody>
-                <tr><th>状态</th><td>待加载</td></tr>
+                <tr><th>状态</th><td>获取中...</td></tr>
               </tbody>
             </table>
           </article>
@@ -694,7 +710,7 @@ def home():
             <button class="secondary" id="btnExpandAllTree">全部展开</button>
             <button class="secondary" id="btnCollapseAllTree">全部折叠</button>
           </div>
-          <div id="treeState" class="action-state">等待刷新</div>
+          <div id="treeState" class="action-state loading">Drive 树获取中...</div>
 
           <div class="chips">
             <span class="chip">token_type: <code id="treeTokenType">-</code></span>
@@ -704,7 +720,7 @@ def home():
             <span class="chip">truncated: <code id="treeTruncatedCount">0</code></span>
           </div>
 
-          <div class="tree-wrap" id="driveTree">待加载 Drive 树...</div>
+          <div class="tree-wrap" id="driveTree">Drive 树获取中...</div>
         </article>
       </section>
 
@@ -721,7 +737,7 @@ def home():
             </div>
             <table class="kv" id="feishuTable">
               <tbody>
-                <tr><th>状态</th><td>待加载</td></tr>
+                <tr><th>状态</th><td>获取中...</td></tr>
               </tbody>
             </table>
           </article>
@@ -729,8 +745,8 @@ def home():
           <article class="card">
             <h2>服务状态 + 手动同步</h2>
             <div class="runline">
-              <span id="runBadge" class="badge idle">空闲</span>
-              <span id="runBadgeText" class="muted">尚未触发本轮同步</span>
+              <span id="runBadge" class="badge loading">获取中</span>
+              <span id="runBadgeText" class="muted">正在获取同步状态...</span>
             </div>
             <div class="actions" style="margin-bottom:10px;">
               <button id="btnRunOnce">执行一次同步</button>
@@ -739,26 +755,26 @@ def home():
               <button class="secondary" id="btnViewLastRunDetail">查看异常详情</button>
               <button class="secondary" id="btnClearLastRunError">清空最近异常</button>
             </div>
-            <div id="runtimeState" class="action-state" style="margin-bottom:10px;">等待刷新</div>
+            <div id="runtimeState" class="action-state loading" style="margin-bottom:10px;">运行状态获取中...</div>
 
             <h3>Service 状态（systemd）</h3>
             <table class="kv" id="serviceTable">
               <tbody>
-                <tr><th>状态</th><td>待加载</td></tr>
+                <tr><th>状态</th><td>获取中...</td></tr>
               </tbody>
             </table>
 
             <h3>自动同步调度状态</h3>
             <table class="kv" id="schedulerTable">
               <tbody>
-                <tr><th>状态</th><td>待加载</td></tr>
+                <tr><th>状态</th><td>获取中...</td></tr>
               </tbody>
             </table>
 
             <h3>最近一次同步摘要</h3>
             <table class="kv" id="runSummaryTable">
               <tbody>
-                <tr><th>状态</th><td>待加载（__LAST_RUN_PATH__）</td></tr>
+                <tr><th>状态</th><td>获取中（__LAST_RUN_PATH__）...</td></tr>
               </tbody>
             </table>
           </article>
@@ -790,8 +806,8 @@ def home():
             </label>
             <button class="secondary" id="btnRefreshLogs">刷新日志</button>
           </div>
-          <div id="logsState" class="action-state" style="margin-bottom:8px;">等待刷新</div>
-          <pre class="logs" id="logPane">待加载日志...</pre>
+          <div id="logsState" class="action-state loading" style="margin-bottom:8px;">日志获取中...</div>
+          <pre class="logs" id="logPane">日志获取中...</pre>
         </article>
       </section>
     </div>
@@ -799,15 +815,34 @@ def home():
     <script>
       const OUT_OF_SCOPE = __OUT_OF_SCOPE__;
       const LAST_RUN_PATH = "__LAST_RUN_PATH__";
+      const RUN_ONCE_REQUEST_TIMEOUT_MS = 180000;
       let autoSyncEnabled = false;
+      let autoSyncKnown = false;
       let autoSyncLastResult = "";
       let autoSyncNextRunInSec = null;
       let autoSyncTicker = null;
+      const firstLoadPending = {
+        config: true,
+        tree: true,
+        feishu: true,
+        scheduler: true,
+        service: true,
+        runSummary: true,
+        logs: true,
+      };
 
       function asText(value, fallback) {
-        if (value === null || value === undefined) return fallback || "-";
+        const hasFallback = arguments.length >= 2;
+        const fb = hasFallback ? String(fallback ?? "") : "-";
+        if (value === null || value === undefined) return fb;
         const s = String(value).trim();
-        return s || (fallback || "-");
+        return s || fb;
+      }
+
+      function consumeFirstLoad(key) {
+        const first = !!firstLoadPending[key];
+        firstLoadPending[key] = false;
+        return first;
       }
 
       function asYesNo(value) {
@@ -934,13 +969,31 @@ def home():
         }).join("");
       }
 
-      async function api(method, url, payload) {
+      async function api(method, url, payload, requestOptions) {
         const options = { method: method || "GET", headers: {} };
         if (payload !== undefined) {
           options.headers["Content-Type"] = "application/json";
           options.body = JSON.stringify(payload);
         }
-        const resp = await fetch(url, options);
+
+        const timeoutRaw = requestOptions && requestOptions.timeoutMs;
+        const timeoutMs = Number.isFinite(Number(timeoutRaw)) ? Math.max(0, Number(timeoutRaw)) : 60000;
+        const controller = new AbortController();
+        options.signal = controller.signal;
+        const timeoutId = timeoutMs > 0 ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+
+        let resp;
+        try {
+          resp = await fetch(url, options);
+        } catch (err) {
+          if (timeoutId !== null) window.clearTimeout(timeoutId);
+          if (err && err.name === "AbortError") {
+            throw new Error("request_timeout");
+          }
+          throw err;
+        }
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
+
         const raw = await resp.text();
         let data = {};
         if (raw) {
@@ -966,7 +1019,8 @@ def home():
         const badge = document.getElementById("runBadge");
         const label = document.getElementById("runBadgeText");
         badge.className = "badge " + state;
-        if (state === "running") badge.textContent = "执行中";
+        if (state === "loading") badge.textContent = "获取中";
+        else if (state === "running") badge.textContent = "执行中";
         else if (state === "success") badge.textContent = "成功";
         else if (state === "failed") badge.textContent = "失败";
         else badge.textContent = "空闲";
@@ -975,6 +1029,7 @@ def home():
 
       async function refreshConfigView(options) {
         const silentState = !!(options && options.silentState);
+        const firstLoad = consumeFirstLoad("config");
         if (!silentState) setActionState("configState", "正在读取当前配置...", "loading");
         try {
           const data = await api("GET", "/api/config");
@@ -992,6 +1047,9 @@ def home():
           if (Array.from(preset.options).some((opt) => opt.value === pollIntervalValue)) preset.value = pollIntervalValue;
           else preset.value = "";
           document.getElementById("fRemoteFolderToken").value = asText(data.sync && data.sync.remote_folder_token, "");
+          document.getElementById("fRemoteDeleteMode").value = asText(data.sync && data.sync.remote_delete_mode, "recycle_bin");
+          document.getElementById("fCleanupEmptyRemoteDirs").checked = !!(data.sync && data.sync.cleanup_empty_remote_dirs);
+          document.getElementById("fCleanupRemoteMissingDirsRecursive").checked = !!(data.sync && data.sync.cleanup_remote_missing_dirs_recursive);
 
           const schedulerMeta = data._scheduler || {};
           const configuredInterval = Number(data.sync && data.sync.poll_interval_sec || 0);
@@ -1004,6 +1062,11 @@ def home():
             ["auth.app_secret", (data.auth && data.auth.app_secret) ? "已配置（隐藏）" : "未配置", (data.auth && data.auth.app_secret) ? "value-good" : "value-bad"],
             ["auth.user_token_file", asText(data.auth && data.auth.user_token_file), ""],
             ["sync.remote_folder_token", asText(data.sync && data.sync.remote_folder_token, "未配置（默认 Drive 根目录）"), ""],
+            ["sync.default_sync_direction", asText(data.sync && data.sync.default_sync_direction, "remote_wins"), ""],
+            ["sync.remote_delete_mode", asText(data.sync && data.sync.remote_delete_mode, "recycle_bin"), asText(data.sync && data.sync.remote_delete_mode, "recycle_bin") === "hard_delete" ? "value-warn" : ""],
+            ["sync.cleanup_empty_remote_dirs", asYesNo(data.sync && data.sync.cleanup_empty_remote_dirs), (data.sync && data.sync.cleanup_empty_remote_dirs) ? "value-warn" : ""],
+            ["sync.cleanup_remote_missing_dirs_recursive", asYesNo(data.sync && data.sync.cleanup_remote_missing_dirs_recursive), (data.sync && data.sync.cleanup_remote_missing_dirs_recursive) ? "value-warn" : ""],
+            ["sync.remote_recycle_bin", asText(data.sync && data.sync.remote_recycle_bin, "SyncRecycleBin"), ""],
             ["sync.auto_sync_enabled", configuredInterval > 0 ? "是" : "否", configuredInterval > 0 ? "value-good" : "value-warn"],
             ["sync.poll_interval_sec", asText(configuredInterval), configuredInterval > 0 ? "" : "value-warn"],
             ["sync.poll_interval_effective_sec", asText(effectiveInterval), (configuredInterval > 0 && effectiveInterval !== configuredInterval) ? "value-warn" : ""],
@@ -1015,6 +1078,13 @@ def home():
           if (!silentState) setActionState("configState", "当前配置已刷新（" + nowClock() + "）", "success");
           return true;
         } catch (err) {
+          if (firstLoad) {
+            renderRows("configTable", [
+              ["状态", "获取中，稍后自动重试", "value-warn"]
+            ]);
+            if (!silentState) setActionState("configState", "当前配置获取中，稍后自动重试...", "loading");
+            return true;
+          }
           renderRows("configTable", [
             ["状态", "读取失败", "value-bad"],
             ["错误", tErr(err.message), "value-bad"]
@@ -1042,7 +1112,10 @@ def home():
           },
           sync: {
             remote_folder_token: document.getElementById("fRemoteFolderToken").value.trim(),
-            poll_interval_sec: Math.floor(pollInterval)
+            poll_interval_sec: Math.floor(pollInterval),
+            remote_delete_mode: document.getElementById("fRemoteDeleteMode").value,
+            cleanup_empty_remote_dirs: !!document.getElementById("fCleanupEmptyRemoteDirs").checked,
+            cleanup_remote_missing_dirs_recursive: !!document.getElementById("fCleanupRemoteMissingDirsRecursive").checked
           },
           web_bind_host: document.getElementById("fWebHost").value.trim(),
           web_port: Number(document.getElementById("fWebPort").value.trim() || "8765")
@@ -1241,6 +1314,7 @@ def home():
       }
 
       async function refreshTree() {
+        const firstLoad = consumeFirstLoad("tree");
         setActionState("treeState", "正在刷新 Drive 树...", "loading");
         document.getElementById("driveTree").textContent = "正在读取 Drive 树...";
         const depth = Number(document.getElementById("treeDepth").value || "3");
@@ -1266,6 +1340,11 @@ def home():
           );
           return true;
         } catch (err) {
+          if (firstLoad) {
+            document.getElementById("driveTree").textContent = "Drive 树获取中，稍后自动重试...";
+            setActionState("treeState", "Drive 树获取中，稍后自动重试...", "loading");
+            return true;
+          }
           document.getElementById("driveTree").textContent = "读取 Drive 树失败：" + tErr(err.message);
           setActionState("treeState", "读取 Drive 树失败：" + tErr(err.message), "danger");
           setMsg("读取 Drive 树失败：" + tErr(err.message), "danger");
@@ -1274,6 +1353,7 @@ def home():
       }
 
       async function refreshFeishu() {
+        const firstLoad = consumeFirstLoad("feishu");
         setFeishuLamp("loading", "连接检测中", "正在校验 token 与 API 连通性...");
         try {
           const data = await api("GET", "/api/status/feishu");
@@ -1311,6 +1391,14 @@ def home():
           }
           return true;
         } catch (err) {
+          if (firstLoad) {
+            renderRows("feishuTable", [
+              ["状态", "获取中，稍后自动重试", "value-warn"]
+            ]);
+            setFeishuLamp("loading", "连接获取中", "服务启动后将自动重试。");
+            setTopStat("topFeishuState", "获取中", "info");
+            return true;
+          }
           renderRows("feishuTable", [
             ["状态", "读取失败", "value-bad"],
             ["错误", tErr(err.message), "value-bad"]
@@ -1340,6 +1428,10 @@ def home():
       }
 
       function renderAutoSyncTop() {
+        if (!autoSyncKnown) {
+          setTopStat("topAutoSyncState", "获取中", "info");
+          return;
+        }
         if (!autoSyncEnabled) {
           setTopStat("topAutoSyncState", "关闭", "warn");
           return;
@@ -1369,7 +1461,7 @@ def home():
       function ensureAutoSyncTicker() {
         if (autoSyncTicker !== null) return;
         autoSyncTicker = window.setInterval(() => {
-          if (autoSyncEnabled && autoSyncLastResult !== "running" && Number.isFinite(Number(autoSyncNextRunInSec))) {
+          if (autoSyncKnown && autoSyncEnabled && autoSyncLastResult !== "running" && Number.isFinite(Number(autoSyncNextRunInSec))) {
             const sec = Number(autoSyncNextRunInSec);
             autoSyncNextRunInSec = sec > 0 ? sec - 1 : 0;
           }
@@ -1378,6 +1470,7 @@ def home():
       }
 
       async function refreshScheduler() {
+        const firstLoad = consumeFirstLoad("scheduler");
         try {
           const data = await api("GET", "/api/status/scheduler");
           const running = !!data.running;
@@ -1401,6 +1494,7 @@ def home():
           ];
           renderRows("schedulerTable", rows);
 
+          autoSyncKnown = true;
           autoSyncEnabled = enabled;
           autoSyncLastResult = asText(data.last_result, "");
           autoSyncNextRunInSec = Number.isFinite(Number(data.next_run_in_sec)) ? Number(data.next_run_in_sec) : null;
@@ -1412,13 +1506,30 @@ def home():
             setRunBadge("running", "自动同步正在执行中");
           } else if (data.last_result === "failed") {
             setRunBadge("failed", "自动同步最近一次失败");
+          } else if (data.last_result === "warning" || data.last_result === "skipped_busy") {
+            setRunBadge("idle", "自动同步已启用，最近一次有告警");
+          } else {
+            setRunBadge("idle", "自动同步已启用");
           }
           return true;
         } catch (err) {
+          if (firstLoad) {
+            renderRows("schedulerTable", [
+              ["状态", "获取中，稍后自动重试", "value-warn"]
+            ]);
+            autoSyncKnown = false;
+            autoSyncEnabled = false;
+            autoSyncLastResult = "";
+            autoSyncNextRunInSec = null;
+            renderAutoSyncTop();
+            setRunBadge("loading", "正在获取同步状态...");
+            return true;
+          }
           renderRows("schedulerTable", [
             ["状态", "读取失败", "value-bad"],
             ["错误", tErr(err.message), "value-bad"]
           ]);
+          autoSyncKnown = true;
           autoSyncEnabled = false;
           autoSyncLastResult = "failed";
           autoSyncNextRunInSec = null;
@@ -1430,6 +1541,7 @@ def home():
       }
 
       async function refreshService() {
+        const firstLoad = consumeFirstLoad("service");
         try {
           const data = await api("GET", "/api/status/service");
           const active = asText(data.active_state, "-");
@@ -1447,6 +1559,13 @@ def home():
           setTopStat("topServiceState", active === "active" ? "运行中" : asText(active, "未知"), active === "active" ? "good" : "warn");
           return true;
         } catch (err) {
+          if (firstLoad) {
+            renderRows("serviceTable", [
+              ["状态", "获取中，稍后自动重试", "value-warn"]
+            ]);
+            setTopStat("topServiceState", "获取中", "info");
+            return true;
+          }
           renderRows("serviceTable", [
             ["状态", "读取失败", "value-bad"],
             ["错误", tErr(err.message), "value-bad"]
@@ -1471,6 +1590,12 @@ def home():
         }
         const errors = Number(summary.errors || 0);
         const fatal = asText(summary.fatal_error, "");
+        const remoteSoftDeleted = Number(summary.remote_soft_deleted || 0);
+        const remoteHardDeleted = Number(summary.remote_hard_deleted || 0);
+        const localSoftDeleted = Number(summary.local_soft_deleted || 0);
+        const remoteEmptyDirsDeleted = Number(summary.remote_empty_dirs_deleted || 0);
+        const remoteDirsDeleted = Number(summary.remote_dirs_deleted || 0);
+        const remoteDirsRecursiveDeleted = Number(summary.remote_dirs_recursive_deleted || 0);
         renderRows("runSummaryTable", [
           ["summary_source", runSummarySourceText(asText(source, "last_run_once")), (source === "history_fallback" || source === "history") ? "value-warn" : ""],
           ["run_id", asText(summary.run_id), ""],
@@ -1478,6 +1603,9 @@ def home():
           ["remote_root_token", asText(summary.remote_root_token), ""],
           ["local_total / remote_total", asText(summary.local_total, "0") + " / " + asText(summary.remote_total, "0"), ""],
           ["uploaded / downloaded / renamed", asText(summary.uploaded, "0") + " / " + asText(summary.downloaded, "0") + " / " + asText(summary.renamed, "0"), ""],
+          ["remote_delete(soft/hard)", asText(remoteSoftDeleted, "0") + " / " + asText(remoteHardDeleted, "0"), remoteHardDeleted > 0 ? "value-warn" : ""],
+          ["local_soft_deleted", asText(localSoftDeleted, "0"), ""],
+          ["remote_dirs_deleted(total/recursive/empty)", asText(remoteDirsDeleted, "0") + " / " + asText(remoteDirsRecursiveDeleted, "0") + " / " + asText(remoteEmptyDirsDeleted, "0"), remoteDirsRecursiveDeleted > 0 ? "value-warn" : ""],
           ["conflicts", asText(summary.conflicts, "0"), Number(summary.conflicts || 0) > 0 ? "value-warn" : ""],
           ["retry_success / retry_failed", asText(summary.retry_success, "0") + " / " + asText(summary.retry_failed, "0"), ""],
           ["errors", asText(errors, "0"), errors > 0 ? "value-bad" : "value-good"],
@@ -1491,6 +1619,7 @@ def home():
       }
 
       async function refreshRunSummary() {
+        const firstLoad = consumeFirstLoad("runSummary");
         try {
           const data = await api("GET", "/api/status/run-once");
           let summary = data.summary || null;
@@ -1507,9 +1636,24 @@ def home():
             } catch (_err) {}
           }
 
+          if (!summary && firstLoad) {
+            renderRows("runSummaryTable", [
+              ["状态", "获取中（等待首次同步完成）", "value-warn"]
+            ]);
+            setTopStat("topLastRunState", "获取中", "info");
+            return true;
+          }
+
           renderRunSummary(summary, source);
           return true;
         } catch (err) {
+          if (firstLoad) {
+            renderRows("runSummaryTable", [
+              ["状态", "获取中，稍后自动重试", "value-warn"]
+            ]);
+            setTopStat("topLastRunState", "获取中", "info");
+            return true;
+          }
           renderRows("runSummaryTable", [
             ["状态", "读取失败", "value-bad"],
             ["错误", tErr(err.message), "value-bad"]
@@ -1552,7 +1696,7 @@ def home():
         setActionState("runtimeState", "正在执行一次同步...", "loading");
         setRunBadge("running", "正在执行同步，请稍候");
         try {
-          const data = await api("POST", "/api/actions/run-once", {});
+          const data = await api("POST", "/api/actions/run-once", {}, { timeoutMs: RUN_ONCE_REQUEST_TIMEOUT_MS });
           renderRunSummary(data || null);
           const hasErr = Boolean(data.fatal_error) || Number(data.errors || 0) > 0;
           if (hasErr) {
@@ -1567,9 +1711,17 @@ def home():
           await Promise.all([refreshFeishu(), refreshTree(), refreshLogs(), refreshScheduler()]);
           return !hasErr;
         } catch (err) {
+          const message = tErr(err && err.message ? err.message : err);
+          if (message.indexOf("请求超时") >= 0) {
+            await Promise.all([refreshRunSummary(), refreshScheduler(), refreshLogs()]);
+            setRunBadge("idle", "请求超时，已自动刷新状态");
+            setActionState("runtimeState", "请求超时，已回读最近状态（" + nowClock() + "）", "warn");
+            setMsg("执行请求超时：同步可能已在后台完成，面板已自动刷新。", "warn");
+            return false;
+          }
           setRunBadge("failed", "同步执行失败");
-          setActionState("runtimeState", "同步执行失败：" + tErr(err.message), "danger");
-          setMsg("执行同步失败：" + tErr(err.message), "danger");
+          setActionState("runtimeState", "同步执行失败：" + message, "danger");
+          setMsg("执行同步失败：" + message, "danger");
           return false;
         }
       }
@@ -1607,6 +1759,7 @@ def home():
       }
 
       async function refreshLogs() {
+        const firstLoad = consumeFirstLoad("logs");
         setActionState("logsState", "正在读取日志...", "loading");
         const n = Number(document.getElementById("logN").value || "200");
         const level = document.getElementById("logLevel").value.trim();
@@ -1623,6 +1776,11 @@ def home():
           setActionState("logsState", "日志已刷新（" + lines + " 行，" + nowClock() + "）", "success");
           return true;
         } catch (err) {
+          if (firstLoad) {
+            document.getElementById("logPane").textContent = "日志获取中，稍后自动重试...";
+            setActionState("logsState", "日志获取中，稍后自动重试...", "loading");
+            return true;
+          }
           document.getElementById("logPane").textContent = "读取日志失败：" + tErr(err.message);
           setActionState("logsState", "读取日志失败：" + tErr(err.message), "danger");
           setMsg("读取日志失败：" + tErr(err.message), "danger");
@@ -1630,14 +1788,22 @@ def home():
         }
       }
 
-      async function refreshAll() {
-        setMsg("正在刷新全部面板...", "info");
+      async function refreshAll(options) {
+        const initial = !!(options && options.initial);
+        setMsg(initial ? "正在加载面板..." : "正在刷新全部面板...", "info");
         const configOk = await refreshConfigView();
         const treeOk = await refreshTree();
         const runtimeOk = await refreshRuntime();
         const logsOk = await refreshLogs();
         const ok = configOk && treeOk && runtimeOk && logsOk;
-        setMsg(ok ? "全部面板已刷新。" : "刷新完成，但部分区域有异常，请查看各区提示。", ok ? "success" : "warn");
+        if (ok) {
+          setMsg(initial ? "面板加载完成。" : "全部面板已刷新。", "success");
+        } else {
+          setMsg(
+            initial ? "部分面板仍在获取中，可稍后再点“刷新全部”。" : "刷新完成，但部分区域有异常，请查看各区提示。",
+            initial ? "info" : "warn",
+          );
+        }
         return ok;
       }
 
@@ -1671,7 +1837,7 @@ def home():
 
       if (OUT_OF_SCOPE) setMsg("检测到 local_root 越界，运行时会自动锁定。", "warn");
       ensureAutoSyncTicker();
-      refreshAll();
+      refreshAll({ initial: true });
       window.setInterval(() => {
         refreshScheduler().catch(() => {});
       }, 15000);

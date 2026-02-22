@@ -34,6 +34,27 @@ python -m localfilesync.cli.main --help
 python -m localfilesync.web.main
 ```
 
+## 凭据安全
+
+- `config.yaml` 仅本机使用，已加入 `.gitignore`，不会随 Git 提交。
+- 仓库提供示例文件：`config.yaml.example`。
+- 若 `config.yaml` 不存在，程序首次加载配置时会自动创建。
+- 也可手动初始化（不覆盖已有本机配置）：
+
+```bash
+cp -n config.yaml.example config.yaml
+```
+- 推荐通过 CLI 在本机写入凭据，而不是直接手改并提交：
+
+```bash
+python -m localfilesync.cli.main config-set-auth \
+  --app-id "<YOUR_APP_ID>" \
+  --app-secret "<YOUR_APP_SECRET>" \
+  --user-token-file "/home/n150/openclaw_workspace/localFile_cloudSync_Server/runtime/user_tokens.json"
+```
+
+- 若历史上曾提交过真实密钥，请立即在飞书开发者后台轮换（撤销旧密钥）。
+
 ## 使用环境与依赖
 
 推荐环境：
@@ -90,6 +111,63 @@ make release      # 查看发布脚本用法
 make rollback     # 查看回滚脚本用法
 ```
 
+## 安装部署与开机自启（速查）
+
+完整手册：`docs/DEPLOYMENT_GUIDE_ZH.md`
+
+最短部署路径：
+
+```bash
+cd /home/n150/openclaw_workspace/localFile_cloudSync_Server
+python3 -m venv venv
+source venv/bin/activate
+make install
+scripts/switch_m1_service.sh prepare
+loginctl enable-linger "$USER"
+```
+
+## 同步策略（`sync.default_sync_direction`）
+
+可选值：
+
+- `remote_wins`：远端优先。删除/冲突时优先保留云端状态。
+- `local_wins`：本地优先。删除/冲突时优先保留本地状态。
+- `bidirectional`：双向决策。根据“哪一侧发生变化”自动选择同步方向。
+
+`bidirectional` 的核心行为：
+
+- 仅本地缺失、远端存在：
+  - 远端自上次同步后有变化 -> 下载回本地
+  - 远端无变化 -> 认为是本地删除，远端移动到回收目录
+- 仅远端缺失、本地存在：
+  - 本地自上次同步后有变化 -> 上传恢复远端
+  - 本地无变化 -> 认为是远端删除，本地移入 `.sync_trash`
+- 两侧都变更：按较新的修改时间决策（较新侧胜出）
+
+配置示例：
+
+```yaml
+sync:
+  default_sync_direction: bidirectional
+  initial_sync_strategy: local_wins
+```
+
+远端删除与空目录清理（`sync.remote_delete_mode` / `sync.cleanup_empty_remote_dirs`）：
+
+- `remote_delete_mode: recycle_bin`：远端删除改为移动到 `SyncRecycleBin`。
+- `remote_delete_mode: hard_delete`：远端删除直接永久删除。
+- `cleanup_empty_remote_dirs: true`：每轮同步后清理“本地不存在且已空”的远端目录。
+- `cleanup_remote_missing_dirs_recursive: true`：每轮同步后，远端缺失目录可连同内部文件递归删除（高风险，建议谨慎开启）。
+
+示例：
+
+```yaml
+sync:
+  remote_delete_mode: hard_delete
+  cleanup_empty_remote_dirs: true
+  cleanup_remote_missing_dirs_recursive: true
+```
+
 ## 健康检查接口
 
 - `GET /api/healthz`：进程存活检查（liveness）
@@ -124,6 +202,7 @@ make rollback     # 查看回滚脚本用法
 ## 参考文档
 
 - 文档总览：`docs/DOCS_INDEX_ZH.md`
+- 安装部署与开机自启：`docs/DEPLOYMENT_GUIDE_ZH.md`
 - 飞书 API 映射：`docs/FEISHU_API_MAPPING_ZH.md`
 - OpenClaw 项目记忆：`docs/OPENCLAW_AGENT_MEMORY_ZH.md`
 - 工程化路线：`docs/ENGINEERING_ROADMAP_ZH.md`

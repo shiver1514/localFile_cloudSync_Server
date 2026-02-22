@@ -26,6 +26,33 @@ def remote_fingerprint(item: dict):
     return f"{item.get('modified_time', '')}:{item.get('size', 0)}"
 
 
+def parse_timestamp(value: object) -> Optional[float]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return float(int(value))
+    if isinstance(value, (int, float)):
+        ts = float(value)
+        if ts > 1_000_000_000_000:  # milliseconds
+            ts /= 1000.0
+        return ts
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        ts = float(raw)
+        if ts > 1_000_000_000_000:  # milliseconds
+            ts /= 1000.0
+        return ts
+    except Exception:
+        pass
+    try:
+        iso = raw.replace("Z", "+00:00")
+        return datetime.fromisoformat(iso).timestamp()
+    except Exception:
+        return None
+
+
 def safe_rel_path(value: str):
     return str(Path(value).as_posix()).lstrip("/")
 
@@ -115,6 +142,9 @@ def scan_local_dirs(
 
 
 class SyncEngine:
+    VALID_SYNC_DIRECTIONS = {"remote_wins", "local_wins", "bidirectional"}
+    VALID_REMOTE_DELETE_MODES = {"recycle_bin", "hard_delete"}
+
     def __init__(self, cfg: dict, db_path: str, client, log_func):
         self.cfg = cfg
         self.db_path = db_path
@@ -148,9 +178,18 @@ class SyncEngine:
         # - remote_wins: first-time sync uses remote as source of truth
         # - dry_run: never soft-delete during initial sync
         self.initial_sync_strategy = sync_cfg.get("initial_sync_strategy", "local_wins")
-        self.default_sync_direction = sync_cfg.get("default_sync_direction", "remote_wins")
+        direction_raw = str(sync_cfg.get("default_sync_direction", "remote_wins") or "remote_wins").strip().lower()
+        self.default_sync_direction = (
+            direction_raw if direction_raw in self.VALID_SYNC_DIRECTIONS else "remote_wins"
+        )
         self.recycle_bin_name = sync_cfg.get("remote_recycle_bin", "SyncRecycleBin")
         self.local_trash_dir_name = sync_cfg.get("local_trash_dir", ".sync_trash")
+        remote_delete_mode_raw = str(sync_cfg.get("remote_delete_mode", "recycle_bin") or "recycle_bin").strip().lower()
+        self.remote_delete_mode = (
+            remote_delete_mode_raw if remote_delete_mode_raw in self.VALID_REMOTE_DELETE_MODES else "recycle_bin"
+        )
+        self.cleanup_empty_remote_dirs = bool(sync_cfg.get("cleanup_empty_remote_dirs", False))
+        self.cleanup_remote_missing_dirs_recursive = bool(sync_cfg.get("cleanup_remote_missing_dirs_recursive", False))
         self.exclude_dirs = sync_cfg.get(
             "exclude_dirs",
             [".git", ".sync_trash", ".sync_quarantine", "__pycache__"],
@@ -164,6 +203,49 @@ class SyncEngine:
 
     def _log(self, level: str, module: str, message: str, detail: Optional[str] = None):
         self.log_func(level, module, message, detail)
+
+    def _is_remote_not_found_error(self, error: object) -> bool:
+        text = str(error or "").lower()
+        return (
+            "1061007" in text
+            or "file has been delete" in text
+            or "status_404" in text
+            or "not found" in text
+            or "resource not found" in text
+        )
+
+    def _resolve_local_missing_action(self, row: dict, remote_item: dict) -> str:
+        if self.default_sync_direction == "remote_wins":
+            return "pull_remote"
+        if self.default_sync_direction == "local_wins":
+            return "delete_remote"
+        remote_changed = remote_fingerprint(remote_item) != (row.get("remote_hash") or "")
+        return "pull_remote" if remote_changed else "delete_remote"
+
+    def _resolve_remote_missing_action(self, row: dict, local_item: dict) -> str:
+        if self.default_sync_direction == "remote_wins":
+            return "delete_local"
+        if self.default_sync_direction == "local_wins":
+            return "upload_local"
+        local_changed = local_item.get("hash") != (row.get("local_hash") or "")
+        return "upload_local" if local_changed else "delete_local"
+
+    def _resolve_both_changed_action(self, local_item: dict, remote_item: dict) -> str:
+        if self.default_sync_direction == "local_wins":
+            return "upload_local"
+        if self.default_sync_direction == "remote_wins":
+            return "pull_remote"
+
+        # Bidirectional mode: prefer newer side by timestamp.
+        local_ts = parse_timestamp(local_item.get("mtime"))
+        remote_ts = parse_timestamp(remote_item.get("modified_time"))
+        if local_ts is not None and remote_ts is not None:
+            if local_ts > remote_ts + 1.0:
+                return "upload_local"
+            if remote_ts > local_ts + 1.0:
+                return "pull_remote"
+        # When timestamps are unavailable or too close, be conservative.
+        return "pull_remote"
 
     def _db(self):
         return get_conn(self.db_path)
@@ -380,6 +462,20 @@ class SyncEngine:
             return True
         return False
 
+    def _is_excluded_dir_path(self, rel_path: str) -> bool:
+        rel = safe_rel_path(rel_path or "")
+        if not rel:
+            return False
+        parts = [p for p in Path(rel).parts if p and p != "."]
+        if not parts:
+            return False
+        excluded = set(self.exclude_dirs or [])
+        if any(p in excluded for p in parts):
+            return True
+        if self.exclude_hidden_dirs and any(_is_hidden_name(p) for p in parts):
+            return True
+        return False
+
     def _execute_retry_payload(self, payload: dict, root_token: str):
         kind = payload.get("kind")
         if kind == "upload":
@@ -400,8 +496,27 @@ class SyncEngine:
                 raise RuntimeError(f"retry_skip_local_internal:{rel}")
             remote_item = payload["remote_item"]
             self._pull_remote_to_local(rel, remote_item)
-        elif kind == "soft_delete_remote":
-            self._soft_delete_remote(payload["remote_token"], payload.get("remote_type", "file"), root_token)
+        elif kind in {"soft_delete_remote", "hard_delete_remote", "delete_remote"}:
+            mode_override = payload.get("delete_mode")
+            if kind == "soft_delete_remote":
+                mode_override = "recycle_bin"
+            elif kind == "hard_delete_remote":
+                mode_override = "hard_delete"
+            recursive = bool(payload.get("recursive", False))
+            if recursive:
+                self._delete_remote_tree(
+                    payload["remote_token"],
+                    payload.get("remote_type", "file"),
+                    root_token,
+                    mode_override=str(mode_override or "").strip().lower() or None,
+                )
+            else:
+                self._delete_remote(
+                    payload["remote_token"],
+                    payload.get("remote_type", "file"),
+                    root_token,
+                    mode_override=str(mode_override or "").strip().lower() or None,
+                )
         elif kind == "soft_delete_local":
             self._soft_delete_local(payload["rel_path"])
         else:
@@ -521,7 +636,18 @@ class SyncEngine:
         stack = [("", root_token)]
         while stack:
             _path, folder_token = stack.pop()
-            children = self.client.list_folder_once(folder_token)
+            try:
+                children = self.client.list_folder_once(folder_token)
+            except Exception as e:
+                if self._is_remote_not_found_error(e):
+                    self._log(
+                        "WARN",
+                        "sync",
+                        "remote_dedup_skip_not_found",
+                        json.dumps({"folder_token": folder_token, "error": str(e)}, ensure_ascii=False),
+                    )
+                    continue
+                raise
             groups: Dict[str, List[dict]] = {}
             for it in children:
                 n = item_name(it)
@@ -538,13 +664,27 @@ class SyncEngine:
                     tok = victim.get("token")
                     typ = victim.get("type") or "file"
                     if tok:
-                        self.client.delete_file(tok, typ)
-                        self._log(
-                            "WARN",
-                            "sync",
-                            "remote_dedup_deleted",
-                            json.dumps({"name": n, "token": tok, "type": typ}, ensure_ascii=False),
-                        )
+                        try:
+                            self.client.delete_file(tok, typ)
+                            self._log(
+                                "WARN",
+                                "sync",
+                                "remote_dedup_deleted",
+                                json.dumps({"name": n, "token": tok, "type": typ}, ensure_ascii=False),
+                            )
+                        except Exception as e:
+                            if self._is_remote_not_found_error(e):
+                                self._log(
+                                    "WARN",
+                                    "sync",
+                                    "remote_dedup_skip_not_found",
+                                    json.dumps(
+                                        {"token": tok, "type": typ, "error": str(e)},
+                                        ensure_ascii=False,
+                                    ),
+                                )
+                                continue
+                            raise
 
                 # If keep is a folder, still traverse it.
                 if keep.get("type") == "folder" and keep.get("token"):
@@ -568,7 +708,237 @@ class SyncEngine:
 
     def _soft_delete_remote(self, remote_token: str, remote_type: str, root_token: str):
         recycle = self._ensure_remote_recycle_bin(root_token)
-        self.client.move_file(remote_token, remote_type or "file", recycle)
+        try:
+            self.client.move_file(remote_token, remote_type or "file", recycle)
+        except Exception as e:
+            if self._is_remote_not_found_error(e):
+                self._log(
+                    "INFO",
+                    "sync",
+                    "remote_delete_skip_not_found",
+                    json.dumps(
+                        {"token": remote_token, "type": remote_type or "file", "mode": "recycle_bin", "error": str(e)},
+                        ensure_ascii=False,
+                    ),
+                )
+                return
+            raise
+
+    def _hard_delete_remote(self, remote_token: str, remote_type: str):
+        try:
+            self.client.delete_file(remote_token, remote_type or "file")
+        except Exception as e:
+            if self._is_remote_not_found_error(e):
+                self._log(
+                    "INFO",
+                    "sync",
+                    "remote_delete_skip_not_found",
+                    json.dumps(
+                        {"token": remote_token, "type": remote_type or "file", "mode": "hard_delete", "error": str(e)},
+                        ensure_ascii=False,
+                    ),
+                )
+                return
+            raise
+
+    def _delete_remote(
+        self,
+        remote_token: str,
+        remote_type: str,
+        root_token: str,
+        mode_override: Optional[str] = None,
+    ) -> str:
+        mode_raw = str(mode_override or self.remote_delete_mode or "recycle_bin").strip().lower()
+        mode = mode_raw if mode_raw in self.VALID_REMOTE_DELETE_MODES else "recycle_bin"
+        if mode == "hard_delete":
+            self._hard_delete_remote(remote_token, remote_type)
+            return "hard_delete"
+        self._soft_delete_remote(remote_token, remote_type, root_token)
+        return "recycle_bin"
+
+    def _delete_remote_tree(
+        self,
+        remote_token: str,
+        remote_type: str,
+        root_token: str,
+        mode_override: Optional[str] = None,
+        visited: Optional[set[str]] = None,
+    ) -> tuple[str, int, int]:
+        item_type = str(remote_type or "file").strip().lower() or "file"
+        mode_raw = str(mode_override or self.remote_delete_mode or "recycle_bin").strip().lower()
+        mode = mode_raw if mode_raw in self.VALID_REMOTE_DELETE_MODES else "recycle_bin"
+
+        if item_type != "folder":
+            used_mode = self._delete_remote(remote_token, item_type, root_token, mode_override=mode)
+            return used_mode, 1, 0
+
+        # recycle_bin mode can move the whole folder in one call.
+        if mode != "hard_delete":
+            used_mode = self._delete_remote(remote_token, "folder", root_token, mode_override=mode)
+            return used_mode, 1, 1
+
+        seen = visited if visited is not None else set()
+        if remote_token in seen:
+            return "hard_delete", 0, 0
+        seen.add(remote_token)
+
+        deleted_nodes = 0
+        deleted_dirs = 0
+        try:
+            children = self.client.list_folder_once(remote_token)
+        except Exception as e:
+            if self._is_remote_not_found_error(e):
+                return "hard_delete", 0, 0
+            raise
+
+        for item in children:
+            child_token = item.get("token")
+            if not child_token:
+                continue
+            child_type = item.get("type") or "file"
+            _mode, nodes, dirs = self._delete_remote_tree(
+                child_token,
+                child_type,
+                root_token,
+                mode_override="hard_delete",
+                visited=seen,
+            )
+            deleted_nodes += nodes
+            deleted_dirs += dirs
+
+        self._hard_delete_remote(remote_token, "folder")
+        return "hard_delete", deleted_nodes + 1, deleted_dirs + 1
+
+    def _cleanup_empty_remote_dirs(self, root_token: str, local_dirs: List[str], local_files: dict, summary: dict):
+        if not self.cleanup_empty_remote_dirs and not self.cleanup_remote_missing_dirs_recursive:
+            return
+        summary.setdefault("errors", 0)
+        summary.setdefault("remote_soft_deleted", 0)
+        summary.setdefault("remote_hard_deleted", 0)
+        summary.setdefault("remote_empty_dirs_deleted", 0)
+        summary.setdefault("remote_dirs_deleted", 0)
+        summary.setdefault("remote_dirs_recursive_deleted", 0)
+
+        try:
+            _remote_files, remote_folders = self._list_remote_tree(root_token)
+        except Exception as e:
+            summary["errors"] += 1
+            self._log(
+                "WARN",
+                "sync",
+                "remote_empty_dir_scan_failed",
+                json.dumps({"error": str(e)}, ensure_ascii=False),
+            )
+            return
+
+        desired_dirs: set[str] = set()
+        for rel in local_dirs:
+            norm = safe_rel_path(rel)
+            if norm and norm != ".":
+                desired_dirs.add(norm)
+
+        # Keep ancestors for root-level and mixed layouts.
+        for rel in local_files.keys():
+            parent = safe_rel_path(str(Path(rel).parent))
+            while parent and parent != ".":
+                desired_dirs.add(parent)
+                next_parent = safe_rel_path(str(Path(parent).parent))
+                if not next_parent or next_parent == "." or next_parent == parent:
+                    break
+                parent = next_parent
+
+        candidates = [
+            path
+            for path in remote_folders.keys()
+            if path
+            and path != self.recycle_bin_name
+            and not path.startswith(f"{self.recycle_bin_name}/")
+        ]
+        candidates.sort(key=lambda p: len(Path(p).parts), reverse=True)
+
+        for path in candidates:
+            if path in desired_dirs:
+                continue
+            if self._is_excluded_dir_path(path):
+                continue
+
+            token = remote_folders.get(path)
+            if not token:
+                continue
+
+            try:
+                children = self.client.list_folder_once(token)
+            except Exception as e:
+                if self._is_remote_not_found_error(e):
+                    self._log(
+                        "WARN",
+                        "sync",
+                        "remote_dir_probe_skip_not_found",
+                        json.dumps({"path": path, "error": str(e)}, ensure_ascii=False),
+                    )
+                    continue
+                summary["errors"] += 1
+                self._log(
+                    "WARN",
+                    "sync",
+                    "remote_empty_dir_probe_failed",
+                    json.dumps({"path": path, "error": str(e)}, ensure_ascii=False),
+                )
+                continue
+
+            has_child = any(isinstance(item, dict) and item.get("token") for item in children)
+            if has_child and not self.cleanup_remote_missing_dirs_recursive:
+                continue
+
+            try:
+                mode, deleted_nodes, deleted_dirs = self._delete_remote_tree(
+                    token,
+                    "folder",
+                    root_token,
+                    mode_override=self.remote_delete_mode if has_child else None,
+                )
+                summary["remote_dirs_deleted"] += deleted_dirs
+                if has_child:
+                    summary["remote_dirs_recursive_deleted"] += 1
+                else:
+                    summary["remote_empty_dirs_deleted"] += 1
+                if mode == "hard_delete":
+                    summary["remote_hard_deleted"] += deleted_nodes
+                else:
+                    summary["remote_soft_deleted"] += 1
+                self._log(
+                    "INFO",
+                    "sync",
+                    "remote_missing_dir_deleted",
+                    json.dumps({"path": path, "mode": mode, "recursive": has_child}, ensure_ascii=False),
+                )
+            except Exception as e:
+                if self._is_remote_not_found_error(e):
+                    self._log(
+                        "WARN",
+                        "sync",
+                        "remote_dir_delete_skip_not_found",
+                        json.dumps({"path": path, "error": str(e)}, ensure_ascii=False),
+                    )
+                    continue
+                self._enqueue_retry(
+                    "delete_remote",
+                    {
+                        "kind": "delete_remote",
+                        "remote_token": token,
+                        "remote_type": "folder",
+                        "delete_mode": self.remote_delete_mode,
+                        "recursive": bool(has_child),
+                    },
+                    str(e),
+                )
+                summary["errors"] += 1
+                self._log(
+                    "WARN",
+                    "sync",
+                    "remote_empty_dir_delete_failed",
+                    json.dumps({"path": path, "error": str(e)}, ensure_ascii=False),
+                )
 
     def _upload_local_file(self, rel_path: str, root_token: str, old_remote_token: Optional[str] = None,
                            old_remote_type: str = "file"):
@@ -602,7 +972,7 @@ class SyncEngine:
             pass
 
         if old_remote_token and old_remote_token != new_token:
-            self._soft_delete_remote(old_remote_token, old_remote_type, root_token)
+            self._delete_remote(old_remote_token, old_remote_type, root_token)
 
         local_hash = sha256_file(local_file)
         local_mtime = local_file.stat().st_mtime
@@ -727,7 +1097,11 @@ class SyncEngine:
             "renamed": 0,
             "conflicts": 0,
             "remote_soft_deleted": 0,
+            "remote_hard_deleted": 0,
             "local_soft_deleted": 0,
+            "remote_empty_dirs_deleted": 0,
+            "remote_dirs_deleted": 0,
+            "remote_dirs_recursive_deleted": 0,
             "retry_success": 0,
             "retry_failed": 0,
             "errors": 0,
@@ -908,8 +1282,8 @@ class SyncEngine:
                 remote_item = remote_by_token.get(row["remote_token"])
 
                 if not local_item and remote_item:
-                    # Default: remote wins → pull remote to local.
-                    if self.default_sync_direction == "remote_wins":
+                    action = self._resolve_local_missing_action(row, remote_item)
+                    if action == "pull_remote":
                         try:
                             self._pull_remote_to_local(rel, remote_item)
                             summary["downloaded"] += 1
@@ -927,19 +1301,33 @@ class SyncEngine:
                             summary["errors"] += 1
                             continue
 
-                    # local_wins: treat as local deleted → delete remote.
                     try:
-                        self._soft_delete_remote(remote_item["token"], remote_item.get("type", "file"), root_token)
+                        delete_mode_used = self._delete_remote(
+                            remote_item["token"],
+                            remote_item.get("type", "file"),
+                            root_token,
+                        )
                         self._insert_tombstone("local", rel, remote_item["token"], "local_deleted")
                         self._mark_deleted_mapping(rel)
-                        summary["remote_soft_deleted"] += 1
+                        if delete_mode_used == "hard_delete":
+                            summary["remote_hard_deleted"] += 1
+                        else:
+                            summary["remote_soft_deleted"] += 1
+                        remote_token = remote_item.get("token")
+                        if remote_token:
+                            remote_by_token.pop(remote_token, None)
+                            remote_files = [r for r in remote_files if r.get("token") != remote_token]
+                        remote_path = remote_item.get("path")
+                        if remote_path:
+                            remote_by_path.pop(remote_path, None)
                     except Exception as e:
                         self._enqueue_retry(
-                            "soft_delete_remote",
+                            "delete_remote",
                             {
-                                "kind": "soft_delete_remote",
+                                "kind": "delete_remote",
                                 "remote_token": remote_item["token"],
                                 "remote_type": remote_item.get("type", "file"),
+                                "delete_mode": self.remote_delete_mode,
                             },
                             str(e),
                         )
@@ -947,8 +1335,8 @@ class SyncEngine:
                     continue
 
                 if local_item and not remote_item:
-                    # Default: remote wins → remote missing means local should be removed.
-                    if self.default_sync_direction == "remote_wins":
+                    action = self._resolve_remote_missing_action(row, local_item)
+                    if action == "delete_local":
                         try:
                             self._soft_delete_local(rel)
                             self._insert_tombstone("remote", rel, row.get("remote_token"), "remote_deleted")
@@ -963,7 +1351,6 @@ class SyncEngine:
                             summary["errors"] += 1
                         continue
 
-                    # local_wins: re-upload.
                     try:
                         self._upload_local_file(rel, root_token)
                         summary["uploaded"] += 1
@@ -982,8 +1369,25 @@ class SyncEngine:
                 local_changed = local_item["hash"] != (row.get("local_hash") or "")
                 remote_changed = remote_fingerprint(remote_item) != (row.get("remote_hash") or "")
 
-                # Default policy: remote wins when both changed.
                 if local_changed and remote_changed:
+                    action = self._resolve_both_changed_action(local_item, remote_item)
+                    if action == "upload_local":
+                        try:
+                            self._upload_local_file(
+                                rel,
+                                root_token,
+                                old_remote_token=row.get("remote_token"),
+                                old_remote_type=row.get("remote_type") or "file",
+                            )
+                            summary["uploaded"] += 1
+                        except Exception as e:
+                            self._enqueue_retry(
+                                "upload",
+                                {"kind": "upload", "rel_path": rel},
+                                str(e),
+                            )
+                            summary["errors"] += 1
+                        continue
                     try:
                         self._pull_remote_to_local(rel, remote_item)
                         summary["downloaded"] += 1
@@ -1127,6 +1531,20 @@ class SyncEngine:
                             err,
                         )
                         summary["errors"] += 1
+
+            self._cleanup_empty_remote_dirs(root_token, local_dirs, local_files, summary)
+            try:
+                remote_files, _remote_folders = self._list_remote_tree(root_token)
+                remote_files = [r for r in remote_files if not self._is_excluded_rel_path(r.get("path") or "")]
+                summary["remote_total"] = len(remote_files)
+            except Exception as e:
+                summary["errors"] += 1
+                self._log(
+                    "WARN",
+                    "sync",
+                    "refresh_remote_total_failed",
+                    json.dumps({"error": str(e)}, ensure_ascii=False),
+                )
 
             self._finish_sync_run(run_id, "success", summary)
             self._log("INFO", "sync", "run_success", json.dumps(summary, ensure_ascii=False))

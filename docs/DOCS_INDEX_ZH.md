@@ -8,6 +8,7 @@
 
 ## 2. 运维与发布
 
+- 安装部署与开机自启：`docs/DEPLOYMENT_GUIDE_ZH.md`
 - 发布/回滚流程：`docs/RELEASE_PLAYBOOK_ZH.md`
 - 发布说明模板：`docs/CHANGELOG_TEMPLATE.md`
 - 已发布版本说明：`docs/releases/`

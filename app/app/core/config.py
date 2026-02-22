@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,10 +20,22 @@ class SyncConfig(BaseModel):
     remote_folder_token: str = ""
     # 0 means disabled; positive values are seconds between scheduled runs.
     poll_interval_sec: int = Field(default=300, ge=0, le=86400)
-    default_sync_direction: str = "remote_wins"
-    initial_sync_strategy: str = "local_wins"
+    # Ongoing sync policy for mapped files:
+    # - remote_wins: remote state wins on delete/conflict
+    # - local_wins: local state wins on delete/conflict
+    # - bidirectional: changed-side wins; both-changed resolves by newer timestamp
+    default_sync_direction: Literal["remote_wins", "local_wins", "bidirectional"] = "remote_wins"
+    initial_sync_strategy: Literal["local_wins", "remote_wins", "dry_run"] = "local_wins"
     remote_recycle_bin: str = "SyncRecycleBin"
     local_trash_dir: str = ".sync_trash"
+    # How to delete remote items when local side wins:
+    # - recycle_bin: move to `remote_recycle_bin`
+    # - hard_delete: permanent delete via Drive API
+    remote_delete_mode: Literal["recycle_bin", "hard_delete"] = "recycle_bin"
+    # When enabled, remove empty remote folders that are not present locally.
+    cleanup_empty_remote_dirs: bool = False
+    # When enabled, remove remote folders missing on local side together with nested files.
+    cleanup_remote_missing_dirs_recursive: bool = False
     exclude_dirs: list[str] = Field(default_factory=lambda: [
         ".git",
         ".sync_trash",
@@ -57,6 +70,7 @@ class AppConfig(BaseModel):
 PROJECT_ROOT = Path("/home/n150/openclaw_workspace/localFile_cloudSync_Server")
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+DEFAULT_CONFIG_TEMPLATE_PATH = PROJECT_ROOT / "config.yaml.example"
 LAST_RUN_ONCE_PATH = RUNTIME_DIR / "last_run_once.json"
 RUN_HISTORY_PATH = RUNTIME_DIR / "run_history.jsonl"
 AUTH_STATE_PATH = RUNTIME_DIR / "auth_state.txt"
@@ -99,10 +113,20 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
     import yaml
 
     if not path.exists():
-        cfg = AppConfig()
-        ensure_runtime_dirs(cfg)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(yaml.safe_dump(cfg.model_dump(), allow_unicode=True, sort_keys=False), encoding="utf-8")
+        if DEFAULT_CONFIG_TEMPLATE_PATH.exists():
+            try:
+                template_text = DEFAULT_CONFIG_TEMPLATE_PATH.read_text(encoding="utf-8")
+                data = yaml.safe_load(template_text) or {}
+                cfg = AppConfig.model_validate(data)
+                path.write_text(template_text, encoding="utf-8")
+            except Exception:
+                cfg = AppConfig()
+                path.write_text(yaml.safe_dump(cfg.model_dump(), allow_unicode=True, sort_keys=False), encoding="utf-8")
+        else:
+            cfg = AppConfig()
+            path.write_text(yaml.safe_dump(cfg.model_dump(), allow_unicode=True, sort_keys=False), encoding="utf-8")
+        ensure_runtime_dirs(cfg)
         return cfg
 
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

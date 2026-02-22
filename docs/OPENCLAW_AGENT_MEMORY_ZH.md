@@ -18,7 +18,7 @@
 
 - 业务主代码：`app/app/`
 - 兼容入口：`app/localfilesync/`
-- 配置文件：`config.yaml`
+- 配置文件：`config.yaml`（本机文件，已 `.gitignore`）/ `config.yaml.example`（仓库示例）
 - 运行态目录：`runtime/`
 - 运维脚本：`scripts/`
 - 发布文档：`docs/releases/`
@@ -53,6 +53,11 @@
 - 主要实现：`app/app/providers/feishu_legacy/sync_engine.py`
 - 支持：
   - 初始同步策略
+  - 默认同步方向策略：`remote_wins` / `local_wins` / `bidirectional`
+  - `bidirectional`：按变化侧决策，删除会在两侧传播
+  - 远端删除模式：`sync.remote_delete_mode`（`recycle_bin` / `hard_delete`）
+  - 远端空目录清理：`sync.cleanup_empty_remote_dirs`（可选）
+  - 远端缺失目录递归删除：`sync.cleanup_remote_missing_dirs_recursive`（高风险可选）
   - 重命名/移动处理
   - 冲突策略（keep_both 等）
   - 重试队列
