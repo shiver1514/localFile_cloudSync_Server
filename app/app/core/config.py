@@ -17,7 +17,8 @@ class FeishuAuthConfig(BaseModel):
 class SyncConfig(BaseModel):
     local_root: str = FIXED_LOCAL_ROOT
     remote_folder_token: str = ""
-    poll_interval_sec: int = 300
+    # 0 means disabled; positive values are seconds between scheduled runs.
+    poll_interval_sec: int = Field(default=300, ge=0, le=86400)
     default_sync_direction: str = "remote_wins"
     initial_sync_strategy: str = "local_wins"
     remote_recycle_bin: str = "SyncRecycleBin"
@@ -29,6 +30,8 @@ class SyncConfig(BaseModel):
         ".local_state",
         "__pycache__",
     ])
+    exclude_hidden_dirs: bool = True
+    exclude_hidden_files: bool = True
 
 
 class LoggingConfig(BaseModel):
@@ -55,6 +58,8 @@ PROJECT_ROOT = Path("/home/n150/openclaw_workspace/localFile_cloudSync_Server")
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 LAST_RUN_ONCE_PATH = RUNTIME_DIR / "last_run_once.json"
+RUN_HISTORY_PATH = RUNTIME_DIR / "run_history.jsonl"
+AUTH_STATE_PATH = RUNTIME_DIR / "auth_state.txt"
 
 
 def _normalize_local_root(value: str) -> str:

@@ -30,7 +30,21 @@ def safe_rel_path(value: str):
     return str(Path(value).as_posix()).lstrip("/")
 
 
-def scan_local_files(local_root: str, exclude_dirs: Optional[List[str]] = None):
+def _is_hidden_name(name: str) -> bool:
+    return bool(name) and name.startswith(".") and name not in {".", ".."}
+
+
+def _is_internal_conflict_artifact(name: str) -> bool:
+    return ".remote_conflict_" in (name or "")
+
+
+def scan_local_files(
+    local_root: str,
+    exclude_dirs: Optional[List[str]] = None,
+    *,
+    exclude_hidden_dirs: bool = True,
+    exclude_hidden_files: bool = True,
+):
     base = Path(local_root)
     if not base.exists():
         return {}
@@ -39,9 +53,17 @@ def scan_local_files(local_root: str, exclude_dirs: Optional[List[str]] = None):
     files = {}
 
     for root, dirnames, filenames in os.walk(base):
-        dirnames[:] = [d for d in dirnames if d not in excludes]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in excludes and not (exclude_hidden_dirs and _is_hidden_name(d))
+        ]
         root_path = Path(root)
         for name in filenames:
+            if exclude_hidden_files and _is_hidden_name(name):
+                continue
+            if _is_internal_conflict_artifact(name):
+                continue
             full = root_path / name
             if not full.is_file():
                 continue
@@ -57,7 +79,12 @@ def scan_local_files(local_root: str, exclude_dirs: Optional[List[str]] = None):
     return files
 
 
-def scan_local_dirs(local_root: str, exclude_dirs: Optional[List[str]] = None) -> List[str]:
+def scan_local_dirs(
+    local_root: str,
+    exclude_dirs: Optional[List[str]] = None,
+    *,
+    exclude_hidden_dirs: bool = True,
+) -> List[str]:
     """Return a list of relative directory paths ("a/b") including empty ones.
 
     This enables structure-driven sync (folders + files).
@@ -71,7 +98,11 @@ def scan_local_dirs(local_root: str, exclude_dirs: Optional[List[str]] = None) -
     dirs: List[str] = []
 
     for root, dirnames, _filenames in os.walk(base):
-        dirnames[:] = [d for d in dirnames if d not in excludes]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in excludes and not (exclude_hidden_dirs and _is_hidden_name(d))
+        ]
         root_path = Path(root)
         if root_path == base:
             continue
@@ -124,6 +155,8 @@ class SyncEngine:
             "exclude_dirs",
             [".git", ".sync_trash", ".sync_quarantine", "__pycache__"],
         )
+        self.exclude_hidden_dirs = bool(sync_cfg.get("exclude_hidden_dirs", True))
+        self.exclude_hidden_files = bool(sync_cfg.get("exclude_hidden_files", True))
         self.max_retry = int(sync_cfg.get("max_retry", 5))
 
         self._remote_folder_cache: Dict[str, str] = {}
@@ -310,10 +343,49 @@ class SyncEngine:
         conn.commit()
         conn.close()
 
+    def _decode_payload_json(self, raw: Optional[str], row_id: Optional[int] = None) -> dict:
+        if not raw:
+            return {}
+        try:
+            payload = json.loads(raw)
+        except Exception as e:
+            detail = {
+                "row_id": row_id,
+                "error": str(e),
+                "payload_snippet": str(raw)[:160],
+            }
+            self._log("WARN", "retry", "payload_json_decode_failed", json.dumps(detail, ensure_ascii=False))
+            return {}
+        if isinstance(payload, dict):
+            return payload
+        detail = {
+            "row_id": row_id,
+            "error": f"payload_json_not_object:{type(payload).__name__}",
+        }
+        self._log("WARN", "retry", "payload_json_decode_failed", json.dumps(detail, ensure_ascii=False))
+        return {}
+
+    def _is_excluded_rel_path(self, rel_path: str) -> bool:
+        rel = safe_rel_path(rel_path or "")
+        if not rel:
+            return False
+        parts = [p for p in Path(rel).parts if p and p != "."]
+        if not parts:
+            return False
+        if any(_is_internal_conflict_artifact(p) for p in parts):
+            return True
+        if self.exclude_hidden_files and _is_hidden_name(parts[-1]):
+            return True
+        if self.exclude_hidden_dirs and any(_is_hidden_name(p) for p in parts[:-1]):
+            return True
+        return False
+
     def _execute_retry_payload(self, payload: dict, root_token: str):
         kind = payload.get("kind")
         if kind == "upload":
             rel = payload["rel_path"]
+            if self._is_excluded_rel_path(rel):
+                raise RuntimeError(f"retry_skip_excluded_path:{rel}")
             if rel.startswith(f"{self.local_trash_dir_name}/") or rel.startswith(".sync_quarantine/"):
                 raise RuntimeError(f"retry_skip_local_internal:{rel}")
             full = self.local_root / rel
@@ -322,6 +394,8 @@ class SyncEngine:
             self._upload_local_file(rel, root_token)
         elif kind == "pull":
             rel = payload["rel_path"]
+            if self._is_excluded_rel_path(rel):
+                raise RuntimeError(f"retry_skip_excluded_path:{rel}")
             if rel.startswith(f"{self.local_trash_dir_name}/") or rel.startswith(".sync_quarantine/"):
                 raise RuntimeError(f"retry_skip_local_internal:{rel}")
             remote_item = payload["remote_item"]
@@ -616,19 +690,19 @@ class SyncEngine:
             return
         for row in rows:
             try:
-                payload = json.loads(row.get("payload_json") or "{}")
+                payload = self._decode_payload_json(row.get("payload_json"), row.get("id"))
                 self._execute_retry_payload(payload, root_token)
                 self._retry_success(row["id"])
                 summary["retry_success"] += 1
             except Exception as e:
                 err = str(e)
+                if err.startswith("retry_skip_excluded_path:") or err.startswith("retry_upload_local_missing:"):
+                    self._retry_success(row["id"])
+                    summary["retry_failed"] += 1
+                    continue
                 # Hard discard for 404: remote resource gone; keep tombstone and drop the retry.
                 if "download_failed_status_404" in err:
-                    payload = {}
-                    try:
-                        payload = json.loads(row.get("payload_json") or "{}")
-                    except Exception:
-                        payload = {}
+                    payload = self._decode_payload_json(row.get("payload_json"), row.get("id"))
                     remote_item = payload.get("remote_item") or {}
                     rel = payload.get("rel_path") or ""
                     self._insert_tombstone("remote", rel, remote_item.get("token") or "", "retry_remote_404")
@@ -664,11 +738,23 @@ class SyncEngine:
             summary["remote_root_token"] = root_token
 
             self.local_root.mkdir(parents=True, exist_ok=True)
-            local_dirs = scan_local_dirs(str(self.local_root), self.exclude_dirs)
-            local_files = scan_local_files(str(self.local_root), self.exclude_dirs)
+            local_dirs = scan_local_dirs(
+                str(self.local_root),
+                self.exclude_dirs,
+                exclude_hidden_dirs=self.exclude_hidden_dirs,
+            )
+            local_files = scan_local_files(
+                str(self.local_root),
+                self.exclude_dirs,
+                exclude_hidden_dirs=self.exclude_hidden_dirs,
+                exclude_hidden_files=self.exclude_hidden_files,
+            )
             summary["local_total"] = len(local_files)
 
             remote_files, remote_folders = self._list_remote_tree(root_token)
+            remote_files = [
+                r for r in remote_files if not self._is_excluded_rel_path(r.get("path") or "")
+            ]
             summary["remote_total"] = len(remote_files)
 
             # Anti-footgun: deduplicate same-name items under the same remote folder.
@@ -677,6 +763,9 @@ class SyncEngine:
                 self._dedup_remote_same_name(root_token)
                 # refresh caches after deletion
                 remote_files, remote_folders = self._list_remote_tree(root_token)
+                remote_files = [
+                    r for r in remote_files if not self._is_excluded_rel_path(r.get("path") or "")
+                ]
                 summary["remote_total"] = len(remote_files)
             except Exception as e:
                 summary["errors"] += 1
@@ -712,7 +801,13 @@ class SyncEngine:
                 elif self.initial_sync_strategy == "dry_run":
                     pass
 
-            mappings = self._load_mappings()
+            mappings = []
+            for m in self._load_mappings():
+                rel = m.get("local_rel_path") or ""
+                if self._is_excluded_rel_path(rel):
+                    self._mark_deleted_mapping(rel)
+                    continue
+                mappings.append(m)
             map_by_path = {m["local_rel_path"]: m for m in mappings}
             map_by_token = {m["remote_token"]: m for m in mappings if m.get("remote_token")}
 
@@ -732,17 +827,79 @@ class SyncEngine:
                     candidates = unmapped_local_by_hash.get(row.get("local_hash"), [])
                     if candidates:
                         new_rel = candidates.pop(0)
-                        self._rename_mapping_path(rel, new_rel)
-                        if Path(new_rel).name != remote_item.get("name"):
-                            try:
-                                self.client.rename_file(remote_item["token"], Path(new_rel).name)
-                            except Exception as e:
-                                summary["errors"] += 1
-                                self._log("WARN", "sync", "remote_rename_failed", str(e))
-                        summary["renamed"] += 1
-                        self._log("INFO", "sync", "local_rename_detected", json.dumps({"old": rel, "new": new_rel}, ensure_ascii=False))
+                        try:
+                            self._upload_local_file(
+                                new_rel,
+                                root_token,
+                                old_remote_token=row.get("remote_token"),
+                                old_remote_type=row.get("remote_type") or "file",
+                            )
+                            self._mark_deleted_mapping(rel)
+                            summary["renamed"] += 1
+                            self._log(
+                                "INFO",
+                                "sync",
+                                "local_rename_detected",
+                                json.dumps({"old": rel, "new": new_rel, "strategy": "reupload_replace"}, ensure_ascii=False),
+                            )
+                        except Exception as e:
+                            self._enqueue_retry("upload", {"kind": "upload", "rel_path": new_rel}, str(e))
+                            summary["errors"] += 1
+                            self._log("WARN", "sync", "remote_rename_failed", str(e))
+                        continue
 
-            mappings = self._load_mappings()
+                if local_item and remote_item:
+                    remote_rel = safe_rel_path(remote_item.get("path") or "")
+                    if remote_rel and remote_rel != rel:
+                        try:
+                            local_name = Path(rel).name
+                            remote_name = Path(remote_rel).name
+                            if local_name == remote_name:
+                                target_parent = safe_rel_path(str(Path(rel).parent))
+                                if target_parent == ".":
+                                    target_parent = ""
+                                target_folder = self._ensure_remote_folder(root_token, target_parent)
+                                self.client.move_file(
+                                    remote_item["token"],
+                                    remote_item.get("type") or "file",
+                                    target_folder,
+                                )
+                            else:
+                                self._upload_local_file(
+                                    rel,
+                                    root_token,
+                                    old_remote_token=row.get("remote_token"),
+                                    old_remote_type=row.get("remote_type") or "file",
+                                )
+                            summary["renamed"] += 1
+                            self._log(
+                                "INFO",
+                                "sync",
+                                "remote_path_realigned",
+                                json.dumps(
+                                    {
+                                        "local_rel": rel,
+                                        "remote_rel_before": remote_rel,
+                                        "strategy": "move" if local_name == remote_name else "reupload_replace",
+                                    },
+                                    ensure_ascii=False,
+                                ),
+                            )
+                        except Exception as e:
+                            self._enqueue_retry("upload", {"kind": "upload", "rel_path": rel}, str(e))
+                            summary["errors"] += 1
+                            self._log("WARN", "sync", "remote_rename_failed", str(e))
+                        continue
+
+            # Some operations above can upload/delete/move remote items.
+            # Refresh remote snapshot to avoid decisions based on stale tokens/paths.
+            remote_files, remote_folders = self._list_remote_tree(root_token)
+            remote_files = [r for r in remote_files if not self._is_excluded_rel_path(r.get("path") or "")]
+            summary["remote_total"] = len(remote_files)
+            remote_by_token = {r["token"]: r for r in remote_files}
+            remote_by_path = {r["path"]: r for r in remote_files}
+
+            mappings = [m for m in self._load_mappings() if not self._is_excluded_rel_path(m.get("local_rel_path") or "")]
             map_by_path = {m["local_rel_path"]: m for m in mappings}
             map_by_token = {m["remote_token"]: m for m in mappings if m.get("remote_token")}
 
@@ -819,6 +976,9 @@ class SyncEngine:
                     self._mark_deleted_mapping(rel)
                     continue
 
+                if remote_item is None:
+                    continue
+
                 local_changed = local_item["hash"] != (row.get("local_hash") or "")
                 remote_changed = remote_fingerprint(remote_item) != (row.get("remote_hash") or "")
 
@@ -877,7 +1037,7 @@ class SyncEngine:
                         summary["errors"] += 1
                     continue
 
-            mappings = self._load_mappings()
+            mappings = [m for m in self._load_mappings() if not self._is_excluded_rel_path(m.get("local_rel_path") or "")]
             map_by_path = {m["local_rel_path"]: m for m in mappings}
             map_by_token = {m["remote_token"]: m for m in mappings if m.get("remote_token")}
 

@@ -1,0 +1,44 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual env
+.venv/
+venv/
+
+# Tooling cache/reports
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+config.yaml.bak.*
+
+# Runtime generated files
+runtime/*
+!runtime/.gitkeep
+runtime/*.db
+runtime/*.log
+runtime/*.jsonl
+runtime/user_tokens.json
+runtime/auth_state.txt
+runtime/last_cmd.txt
+runtime/last_cmd_history.log
+runtime/sync_trash_backup_*.tar.gz

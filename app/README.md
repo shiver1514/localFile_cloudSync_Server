@@ -39,3 +39,25 @@ Switch helper script (non-destructive by default):
 - `scripts/switch_m1_service.sh status`
 
 `prepare` intentionally does not stop/disable `openclaw-feishu-sync.service`.
+
+## Engineering quick check
+
+From repo root:
+
+```bash
+make check
+```
+
+API probes:
+
+```bash
+curl -fsS http://127.0.0.1:8765/api/healthz
+curl -fsS http://127.0.0.1:8765/api/readyz
+```
+
+Release/rollback scripts:
+
+```bash
+./scripts/release.sh --help
+./scripts/rollback_release.sh --help
+```

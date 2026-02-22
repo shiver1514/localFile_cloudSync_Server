@@ -1,34 +1,46 @@
 # localFile_cloudSync_Server
 
-目标：把现有 `feishu_sync_service` 演进为一个“完整工程化”的本地↔云端（飞书/未来钉钉）同步服务应用。
+本项目是本地目录与飞书 Drive 的同步服务，包含 CLI、Web 控制台、定时调度与 systemd 用户态运行。
 
-- 备份：`feishu_sync_service_backup_20260221_1509/`
-- 新实现（即将创建）：`app/`（或 `server/`）目录
+## 目录说明
 
-## 需求摘要（Shiver）
-
-1. CLI 调试界面 + Web 配置/调试界面（交互友好）
-2. Linux 后台静默启动（systemd --user），可配置定时刷新
-3. 配置项：
-   - 飞书 app_id/app_secret
-   - user token / refresh token 查看与修改
-   - 飞书连接状态查看
-   - 本地目录配置/查看
-   - 使用文档查看
-   - 本地数据库查看
-4. 详细日志系统：分级、可按文档/模块检索；OpenClaw 可查看服务运行情况
-5. 云端接口可替换：飞书 → 钉钉（保留 provider 抽象）
-
-## 下一步
-
-- 定义项目结构与接口抽象（provider / sync engine / storage / web ui）
-- 实现 CLI（typer）与 Web UI（FastAPI + 简单前端）
-- systemd 单元与运行配置
-- 日志与状态页面
-
-## M1 运行切换
-
-- 新 unit 模板：`deploy/systemd/localfile-cloudsync.service`
+- 当前实现：`app/`
+- 服务单元模板：`deploy/systemd/localfile-cloudsync.service`
 - 切换脚本：`scripts/switch_m1_service.sh`
-- 默认切换命令（不影响旧服务）：`scripts/switch_m1_service.sh prepare`
-- 详细说明：`docs/M1_SWITCH.md`
+- 旧版本备份：`feishu_sync_service_backup_20260221_1509/`
+
+## 快速启动
+
+```bash
+cd /home/n150/openclaw_workspace/localFile_cloudSync_Server
+source venv/bin/activate
+cd app
+python -m localfilesync.cli.main --help
+python -m localfilesync.web.main
+```
+
+## 工程化命令
+
+在仓库根目录执行：
+
+```bash
+make install      # 安装开发依赖
+make lint         # ruff 检查
+make typecheck    # mypy 检查
+make test         # pytest
+make check        # lint + typecheck + test + compile
+make release      # 查看发布脚本用法
+make rollback     # 查看回滚脚本用法
+```
+
+## 健康检查接口
+
+- `GET /api/healthz`：进程存活检查（liveness）
+- `GET /api/readyz`：服务就绪检查（readiness，失败返回 503）
+
+## 参考文档
+
+- 运行切换说明：`docs/M1_SWITCH.md`
+- 工程化路线：`docs/ENGINEERING_ROADMAP_ZH.md`
+- 发布手册：`docs/RELEASE_PLAYBOOK_ZH.md`
+- 变更模板：`docs/CHANGELOG_TEMPLATE.md`
