@@ -10,6 +10,7 @@
 - 发布/回滚流程：`docs/RELEASE_PLAYBOOK_ZH.md`
 - 发布说明模板：`docs/CHANGELOG_TEMPLATE.md`
 - 已发布版本说明：`docs/releases/`
+- UI 截图规范：`docs/screenshots/README.md`
 
 ## 3. 工程与质量
 
