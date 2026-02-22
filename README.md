@@ -34,6 +34,48 @@ python -m localfilesync.cli.main --help
 python -m localfilesync.web.main
 ```
 
+## 使用环境与依赖
+
+推荐环境：
+
+- OS：Linux（已针对 `systemd --user` 运维方式适配）
+- Python：`3.12+`
+- Git：`2.43+`（用于发布与版本管理）
+
+核心运行依赖（见 `app/pyproject.toml`）：
+
+- `fastapi`
+- `uvicorn`
+- `pydantic`
+- `pyyaml`
+- `requests`
+- `typer`
+- `rich`
+
+开发依赖：
+
+- `ruff`
+- `mypy`
+- `pytest`
+- `pytest-cov`
+
+安装开发依赖：
+
+```bash
+make install
+```
+
+## 云空间支持范围（当前版本）
+
+当前仅支持飞书云空间，且仅支持**飞书用户身份链路**：
+
+- `user_access`（即 `user_access_token`）OAuth 授权方案
+
+当前不支持：
+
+- 其他云空间（例如钉钉）
+- 非用户身份链路作为主同步模式
+
 ## 工程化命令
 
 在仓库根目录执行：

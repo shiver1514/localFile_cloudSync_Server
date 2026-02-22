@@ -41,6 +41,7 @@
 
 ### 4.1 鉴权与飞书连接
 
+- 当前版本仅支持飞书云空间，且仅支持 `user_access`（`user_access_token`）链路。
 - 使用飞书 OAuth 用户令牌流：
   - `auth-url` 生成授权链接
   - `auth-exchange` 换取 token
