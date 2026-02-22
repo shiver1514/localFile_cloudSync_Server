@@ -99,14 +99,27 @@ make rollback     # 查看回滚脚本用法
 
 截图目录：`docs/screenshots/`
 
-- 建议文件名：
-  - `dashboard-overview.png`：控制台总览
-  - `config-panel.png`：配置区（鉴权与基础配置）
-  - `drive-tree.png`：Drive 文件树
-  - `runtime-status.png`：运行状态与自动同步
-  - `logs-panel.png`：日志巡检区
+### 控制台总览
 
-截图说明模板：`docs/screenshots/README.md`
+![控制台总览](docs/screenshots/dashboard-overview.png)
+
+### 配置区（飞书术语对齐）
+
+![配置区](docs/screenshots/config-panel.png)
+
+### Drive 目录与文件树
+
+![Drive 文件树](docs/screenshots/drive-tree.png)
+
+### 运行状态与自动同步
+
+![运行状态](docs/screenshots/runtime-status.png)
+
+### 日志巡检区
+
+![日志巡检](docs/screenshots/logs-panel.png)
+
+截图清单与建议规格：`docs/screenshots/README.md`
 
 ## 参考文档
 
