@@ -48,6 +48,7 @@ def home():
       :root {
         --bg-a: #f5f9ff;
         --bg-b: #e8f3ff;
+        --bg-c: #fff6e9;
         --ink: #0a1f3d;
         --muted: #4d6486;
         --line: #d3e2f3;
@@ -56,27 +57,52 @@ def home():
         --warn: #b45309;
         --bad: #b91c1c;
         --info: #1d4ed8;
+        --shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.08);
+        --shadow-lift: 0 16px 30px rgba(15, 23, 42, 0.14);
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         color: var(--ink);
         font-family: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        min-height: 100vh;
+        background-color: var(--bg-a);
         background:
           radial-gradient(circle at 10% 12%, rgba(59, 130, 246, 0.15), transparent 40%),
           radial-gradient(circle at 88% 8%, rgba(245, 158, 11, 0.15), transparent 40%),
-          linear-gradient(140deg, var(--bg-a), var(--bg-b));
+          radial-gradient(circle at 82% 82%, rgba(16, 185, 129, 0.12), transparent 34%),
+          linear-gradient(140deg, var(--bg-a), var(--bg-b) 52%, var(--bg-c));
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(transparent 96%, rgba(255, 255, 255, 0.55) 100%),
+          linear-gradient(90deg, transparent 96%, rgba(255, 255, 255, 0.5) 100%);
+        background-size: 28px 28px, 28px 28px;
+        opacity: 0.22;
       }
       .app {
         max-width: 1240px;
         margin: 0 auto;
         padding: 20px 16px 36px;
+        position: relative;
+        z-index: 1;
       }
       .header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
         gap: 12px;
+        padding: 14px 16px;
+        border: 1px solid rgba(191, 219, 254, 0.85);
+        border-radius: 16px;
+        backdrop-filter: blur(6px);
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: var(--shadow-soft);
+        margin-bottom: 12px;
       }
       h1 {
         margin: 0;
@@ -130,6 +156,16 @@ def home():
         border: 1px solid #d9e6f7;
         border-radius: 12px;
         padding: 10px 12px;
+        box-shadow: 0 6px 16px rgba(30, 64, 175, 0.08);
+        position: relative;
+        overflow: hidden;
+      }
+      .stat-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, rgba(219, 234, 254, 0.44), transparent 60%);
+        pointer-events: none;
       }
       .stat-label {
         font-size: 12px;
@@ -164,6 +200,14 @@ def home():
         flex-wrap: wrap;
         gap: 8px;
         margin-bottom: 12px;
+        position: sticky;
+        top: 8px;
+        z-index: 2;
+        padding: 8px;
+        border-radius: 14px;
+        border: 1px solid #dbe7f7;
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(6px);
       }
       .tab {
         border: 1px solid #bfd3ee;
@@ -173,6 +217,11 @@ def home():
         padding: 7px 14px;
         font-size: 14px;
         cursor: pointer;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+      }
+      .tab:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(59, 130, 246, 0.2);
       }
       .tab.active {
         border-color: #1d4ed8;
@@ -184,6 +233,7 @@ def home():
       }
       .panel.active {
         display: block;
+        animation: panelFade 0.28s ease-out;
       }
       .grid {
         display: grid;
@@ -197,7 +247,12 @@ def home():
         border: 1px solid var(--line);
         border-radius: 16px;
         padding: 14px;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+        box-shadow: var(--shadow-soft);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lift);
       }
       .card h2 {
         margin: 0 0 10px;
@@ -242,6 +297,12 @@ def home():
         background: #fff;
         padding: 8px;
         font-size: 14px;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
       }
       textarea {
         min-height: 78px;
@@ -260,10 +321,17 @@ def home():
         padding: 9px 12px;
         font-size: 14px;
         cursor: pointer;
+        transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+      }
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 20px rgba(15, 118, 110, 0.24);
+        filter: saturate(1.08);
       }
       button.secondary { background: #1d4ed8; }
       button.warn { background: #b45309; }
       button:disabled { opacity: 0.65; cursor: not-allowed; }
+      button:disabled:hover { transform: none; box-shadow: none; filter: none; }
       button.btn-loading {
         position: relative;
         padding-left: 34px;
@@ -496,6 +564,9 @@ def home():
         word-break: break-word;
       }
       @media (max-width: 1024px) {
+        .tabs {
+          position: static;
+        }
         .stats-grid {
           grid-template-columns: 1fr 1fr;
         }
@@ -515,6 +586,16 @@ def home():
         0% { transform: scale(1); opacity: 0.3; }
         70% { transform: scale(2.3); opacity: 0; }
         100% { transform: scale(2.3); opacity: 0; }
+      }
+      @keyframes panelFade {
+        from { opacity: 0; transform: translateY(3px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
       }
     </style>
   </head>
@@ -842,6 +923,7 @@ def home():
       const RUN_ONCE_REQUEST_TIMEOUT_MS = 180000;
       let autoSyncEnabled = false;
       let autoSyncKnown = false;
+      let schedulerInitialized = false;
       let autoSyncLastResult = "";
       let autoSyncNextRunInSec = null;
       let autoSyncTicker = null;
@@ -1482,7 +1564,7 @@ def home():
       }
 
       function renderAutoSyncTop() {
-        if (!autoSyncKnown) {
+        if (!schedulerInitialized || !autoSyncKnown) {
           setTopStat("topAutoSyncState", "获取中", "info");
           return;
         }
@@ -1527,12 +1609,33 @@ def home():
         const firstLoad = consumeFirstLoad("scheduler");
         try {
           const data = await api("GET", "/api/status/scheduler");
+          const initialized = data.initialized === true;
           const running = !!data.running;
           const enabled = !!data.enabled;
           const configuredInterval = Number(data.configured_interval_sec || 0);
           const effectiveInterval = Number(data.effective_interval_sec || 0);
+
+          if (!initialized) {
+            renderRows("schedulerTable", [
+              ["checked_at", toLocalTime(data.checked_at), ""],
+              ["scheduler_initialized", "获取中", "value-warn"],
+              ["scheduler_running", "获取中", "value-warn"],
+              ["auto_sync_enabled", "获取中", "value-warn"],
+              ["last_result", "初始化中", "value-warn"],
+            ]);
+            schedulerInitialized = false;
+            autoSyncKnown = false;
+            autoSyncEnabled = false;
+            autoSyncLastResult = "";
+            autoSyncNextRunInSec = null;
+            renderAutoSyncTop();
+            setRunBadge("loading", "调度器初始化中...");
+            return true;
+          }
+
           const rows = [
             ["checked_at", toLocalTime(data.checked_at), ""],
+            ["scheduler_initialized", asYesNo(initialized), "value-good"],
             ["scheduler_running", asYesNo(running), running ? "value-good" : "value-bad"],
             ["auto_sync_enabled", asYesNo(enabled), enabled ? "value-good" : "value-warn"],
             ["poll_interval_sec(configured)", asText(configuredInterval), enabled ? "" : "value-warn"],
@@ -1548,6 +1651,7 @@ def home():
           ];
           renderRows("schedulerTable", rows);
 
+          schedulerInitialized = true;
           autoSyncKnown = true;
           autoSyncEnabled = enabled;
           autoSyncLastResult = asText(data.last_result, "");
@@ -1558,6 +1662,7 @@ def home():
             setRunBadge("idle", "自动同步已关闭，仅手动执行");
           } else if (data.last_result === "running") {
             setRunBadge("running", "自动同步正在执行中");
+            setTopStat("topLastRunState", "同步执行中", "info");
           } else if (data.last_result === "failed") {
             setRunBadge("failed", "自动同步最近一次失败");
           } else if (data.last_result === "warning" || data.last_result === "skipped_busy") {
@@ -1571,6 +1676,7 @@ def home():
             renderRows("schedulerTable", [
               ["状态", "获取中，稍后自动重试", "value-warn"]
             ]);
+            schedulerInitialized = false;
             autoSyncKnown = false;
             autoSyncEnabled = false;
             autoSyncLastResult = "";
@@ -1583,6 +1689,7 @@ def home():
             ["状态", "读取失败", "value-bad"],
             ["错误", tErr(err.message), "value-bad"]
           ]);
+          schedulerInitialized = true;
           autoSyncKnown = true;
           autoSyncEnabled = false;
           autoSyncLastResult = "failed";
@@ -1676,9 +1783,12 @@ def home():
       }
 
       function renderRunSummary(summary, source) {
+        if (autoSyncLastResult === "running") {
+          setTopStat("topLastRunState", "同步执行中", "info");
+        }
         if (!summary) {
           renderRows("runSummaryTable", [["状态", "暂无同步摘要（等待首次同步完成）", ""]]);
-          setTopStat("topLastRunState", "暂无记录", "warn");
+          if (autoSyncLastResult !== "running") setTopStat("topLastRunState", "暂无记录", "warn");
           return;
         }
         const errors = Number(summary.errors || 0);
@@ -1705,9 +1815,9 @@ def home():
           ["fatal_error", fatal ? tErr(fatal) : "无", fatal ? "value-bad" : ""]
         ]);
         if (fatal || errors > 0) {
-          setTopStat("topLastRunState", "第" + asText(summary.run_id, "-") + "次（异常）", "warn");
+          if (autoSyncLastResult !== "running") setTopStat("topLastRunState", "第" + asText(summary.run_id, "-") + "次（异常）", "warn");
         } else {
-          setTopStat("topLastRunState", "第" + asText(summary.run_id, "-") + "次（成功）", "good");
+          if (autoSyncLastResult !== "running") setTopStat("topLastRunState", "第" + asText(summary.run_id, "-") + "次（成功）", "good");
         }
       }
 
@@ -1788,6 +1898,7 @@ def home():
       async function runOnce() {
         setActionState("runtimeState", "正在执行一次同步...", "loading");
         setRunBadge("running", "正在执行同步，请稍候");
+        setTopStat("topLastRunState", "执行中", "info");
         try {
           const data = await api("POST", "/api/actions/run-once", {}, { timeoutMs: RUN_ONCE_REQUEST_TIMEOUT_MS });
           renderRunSummary(data || null);

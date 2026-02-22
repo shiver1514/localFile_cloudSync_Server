@@ -1,35 +1,36 @@
-PYTHON ?= python3
 APP_DIR ?= app
+ROOT_PYTHON ?= $(if $(wildcard ./venv/bin/python),./venv/bin/python,python3)
+APP_PYTHON ?= $(if $(wildcard ./venv/bin/python),../venv/bin/python,$(if $(wildcard ./app/venv/bin/python),./venv/bin/python,python3))
 
 .PHONY: install lint format typecheck test compile check ci run-web cli-help release rollback
 
 install:
-	$(PYTHON) -m pip install -e "./$(APP_DIR)[dev]"
+	$(ROOT_PYTHON) -m pip install -e "./$(APP_DIR)[dev]"
 
 lint:
-	cd $(APP_DIR) && $(PYTHON) -m ruff check app localfilesync
+	cd $(APP_DIR) && $(APP_PYTHON) -m ruff check app localfilesync
 
 format:
-	cd $(APP_DIR) && $(PYTHON) -m ruff format app localfilesync
+	cd $(APP_DIR) && $(APP_PYTHON) -m ruff format app localfilesync
 
 typecheck:
-	cd $(APP_DIR) && $(PYTHON) -m mypy app localfilesync
+	cd $(APP_DIR) && $(APP_PYTHON) -m mypy app localfilesync
 
 test:
-	cd $(APP_DIR) && $(PYTHON) -m pytest
+	cd $(APP_DIR) && $(APP_PYTHON) -m pytest
 
 compile:
-	cd $(APP_DIR) && $(PYTHON) -m compileall -q app localfilesync
+	cd $(APP_DIR) && $(APP_PYTHON) -m compileall -q app localfilesync
 
 check: lint typecheck test compile
 
 ci: check
 
 run-web:
-	cd $(APP_DIR) && $(PYTHON) -m localfilesync.web.main
+	cd $(APP_DIR) && $(APP_PYTHON) -m localfilesync.web.main
 
 cli-help:
-	cd $(APP_DIR) && $(PYTHON) -m localfilesync.cli.main --help
+	cd $(APP_DIR) && $(APP_PYTHON) -m localfilesync.cli.main --help
 
 release:
 	./scripts/release.sh --help

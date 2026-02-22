@@ -141,3 +141,16 @@ def test_event_callback_dedups_same_event_id(monkeypatch):
     assert second.status_code == 200
     assert second.json()["queued"] is False
     assert second.json()["reason"] == "duplicate_event"
+
+
+def test_event_callback_returns_503_when_verify_token_missing(monkeypatch):
+    _reset_event_state()
+    cfg = _mock_cfg()
+    cfg.sync.event_verify_token = ""
+    monkeypatch.setattr(api_module, "load_config", lambda: cfg)
+
+    client = _build_client()
+    resp = client.post("/api/events/feishu", json=_event_payload("evt-no-token", "drive.file.edit_v1"))
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "event_verify_token_missing"

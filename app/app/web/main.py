@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError, version
 
 from fastapi import FastAPI
 
@@ -9,6 +10,13 @@ from app.providers.feishu_legacy.db import init_db
 from app.web.security import NetworkAllowlistMiddleware, get_allowed_nets
 from app.web.api import router as api_router, start_scheduler, stop_scheduler
 from app.web.pages import router as pages_router
+
+
+def _app_version() -> str:
+    try:
+        return version("localfile-cloudsync-server")
+    except PackageNotFoundError:
+        return "0.0.0"
 
 
 def build_app() -> FastAPI:
@@ -23,7 +31,7 @@ def build_app() -> FastAPI:
         finally:
             await stop_scheduler()
 
-    api = FastAPI(title="localFile_cloudSync_Server", version="0.1.0", lifespan=lifespan)
+    api = FastAPI(title="localFile_cloudSync_Server", version=_app_version(), lifespan=lifespan)
     api.add_middleware(NetworkAllowlistMiddleware, allowed_nets=get_allowed_nets())
 
     api.include_router(pages_router)

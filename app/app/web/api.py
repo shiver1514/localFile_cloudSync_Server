@@ -48,6 +48,7 @@ SCHEDULER_MAX_INTERVAL_SEC = 86400
 _scheduler_task: asyncio.Task | None = None
 _scheduler_stop_event: asyncio.Event | None = None
 _scheduler_state: dict[str, object] = {
+    "initialized": False,
     "running": False,
     "enabled": False,
     "configured_interval_sec": 0,
@@ -259,6 +260,7 @@ def _scheduler_state_snapshot() -> dict[str, object]:
         next_run_in_sec = max(int(next_run_at - now_ts), 0)
 
     return {
+        "initialized": bool(snap.get("initialized")),
         "running": bool(snap.get("running")),
         "enabled": bool(snap.get("enabled")),
         "configured_interval_sec": _as_int(snap.get("configured_interval_sec"), 0),
@@ -563,6 +565,7 @@ def _build_readiness_payload() -> dict:
         "local_root_in_scope": False,
         "scheduler_running": False,
         "scheduler_enabled": False,
+        "event_callback_config_ok": True,
     }
     warnings: list[str] = []
     errors: list[str] = []
@@ -581,6 +584,11 @@ def _build_readiness_payload() -> dict:
         checks["local_root_in_scope"] = is_local_root_in_scope(cfg.sync.local_root)
         if not checks["local_root_in_scope"]:
             warnings.append("local_root_out_of_scope")
+
+        event_settings = _event_runtime_settings(cfg)
+        if bool(event_settings["enabled"]) and not bool(event_settings["verify_token"]):
+            checks["event_callback_config_ok"] = False
+            warnings.append("event_callback_enabled_but_verify_token_missing")
 
         try:
             Path(cfg.database.path).parent.mkdir(parents=True, exist_ok=True)
@@ -633,6 +641,7 @@ async def _scheduler_loop(stop_event: asyncio.Event) -> None:
     next_run_at_ts: float | None = None
     previous_effective_interval: int | None = None
     _scheduler_state_update(
+        initialized=False,
         running=True,
         last_error=None,
         last_result=None,
@@ -641,84 +650,99 @@ async def _scheduler_loop(stop_event: asyncio.Event) -> None:
 
     try:
         while not stop_event.is_set():
-            cfg = load_config()
-            _sync_event_state_from_config(cfg)
-            configured_interval = int(cfg.sync.poll_interval_sec or 0)
-            effective_interval = _sanitize_poll_interval(configured_interval)
-            enabled = configured_interval > 0
-
-            _scheduler_state_update(
-                enabled=enabled,
-                configured_interval_sec=configured_interval,
-                effective_interval_sec=effective_interval,
-            )
-
-            if not enabled:
-                next_run_at_ts = None
-                previous_effective_interval = None
-                _scheduler_state_update(next_run_at=None)
-                await _wait_stop_or_timeout(stop_event, SCHEDULER_POLL_GRANULARITY_SEC)
-                continue
-
-            now_ts = time.time()
-            if next_run_at_ts is None:
-                next_run_at_ts = now_ts + effective_interval
-            elif previous_effective_interval is not None and previous_effective_interval != effective_interval:
-                next_run_at_ts = now_ts + effective_interval
-            previous_effective_interval = effective_interval
-            _scheduler_state_update(next_run_at=next_run_at_ts)
-
-            wait_sec = next_run_at_ts - now_ts
-            if wait_sec > 0:
-                await _wait_stop_or_timeout(stop_event, min(wait_sec, SCHEDULER_POLL_GRANULARITY_SEC))
-                continue
-
-            if not SYNC_RUN_LOCK.acquire(blocking=False):
-                skipped = _as_int(_scheduler_state_snapshot().get("skipped_busy_count"), 0) + 1
-                next_run_at_ts = time.time() + effective_interval
-                _scheduler_state_update(
-                    skipped_busy_count=skipped,
-                    last_finished_at=time.time(),
-                    last_result="skipped_busy",
-                    last_error="sync_busy",
-                    next_run_at=next_run_at_ts,
-                )
-                logger.warning("scheduled_sync_skipped sync_busy")
-                continue
-
-            started_ts = time.time()
-            _scheduler_state_update(last_started_at=started_ts, last_result="running", last_error=None)
             try:
-                summary = await asyncio.to_thread(_run_sync_once_and_record, "scheduled")
-                errors = _as_int(summary.get("errors", 0), 0)
-                fatal = summary.get("fatal_error")
-                run_count = _as_int(_scheduler_state_snapshot().get("run_count"), 0) + 1
+                cfg = load_config()
+                _sync_event_state_from_config(cfg)
+                configured_interval = int(cfg.sync.poll_interval_sec or 0)
+                effective_interval = _sanitize_poll_interval(configured_interval)
+                enabled = configured_interval > 0
+
                 _scheduler_state_update(
-                    last_finished_at=time.time(),
-                    last_result="warning" if (fatal or errors > 0) else "success",
-                    last_error=str(fatal or "") if fatal else (f"errors={errors}" if errors > 0 else None),
-                    run_count=run_count,
+                    initialized=True,
+                    enabled=enabled,
+                    configured_interval_sec=configured_interval,
+                    effective_interval_sec=effective_interval,
                 )
-                logger.info(
-                    "scheduled_sync_completed errors=%s uploaded=%s downloaded=%s renamed=%s",
-                    errors,
-                    summary.get("uploaded", 0),
-                    summary.get("downloaded", 0),
-                    summary.get("renamed", 0),
-                )
+
+                if not enabled:
+                    next_run_at_ts = None
+                    previous_effective_interval = None
+                    _scheduler_state_update(next_run_at=None)
+                    await _wait_stop_or_timeout(stop_event, SCHEDULER_POLL_GRANULARITY_SEC)
+                    continue
+
+                now_ts = time.time()
+                if next_run_at_ts is None:
+                    next_run_at_ts = now_ts + effective_interval
+                elif previous_effective_interval is not None and previous_effective_interval != effective_interval:
+                    next_run_at_ts = now_ts + effective_interval
+                previous_effective_interval = effective_interval
+                _scheduler_state_update(next_run_at=next_run_at_ts)
+
+                wait_sec = next_run_at_ts - now_ts
+                if wait_sec > 0:
+                    await _wait_stop_or_timeout(stop_event, min(wait_sec, SCHEDULER_POLL_GRANULARITY_SEC))
+                    continue
+
+                if not SYNC_RUN_LOCK.acquire(blocking=False):
+                    skipped = _as_int(_scheduler_state_snapshot().get("skipped_busy_count"), 0) + 1
+                    next_run_at_ts = time.time() + effective_interval
+                    _scheduler_state_update(
+                        skipped_busy_count=skipped,
+                        last_finished_at=time.time(),
+                        last_result="skipped_busy",
+                        last_error="sync_busy",
+                        next_run_at=next_run_at_ts,
+                    )
+                    logger.warning("scheduled_sync_skipped sync_busy")
+                    continue
+
+                started_ts = time.time()
+                _scheduler_state_update(last_started_at=started_ts, last_result="running", last_error=None)
+                try:
+                    summary = await asyncio.to_thread(_run_sync_once_and_record, "scheduled")
+                    errors = _as_int(summary.get("errors", 0), 0)
+                    fatal = summary.get("fatal_error")
+                    run_count = _as_int(_scheduler_state_snapshot().get("run_count"), 0) + 1
+                    _scheduler_state_update(
+                        last_finished_at=time.time(),
+                        last_result="warning" if (fatal or errors > 0) else "success",
+                        last_error=str(fatal or "") if fatal else (f"errors={errors}" if errors > 0 else None),
+                        run_count=run_count,
+                    )
+                    logger.info(
+                        "scheduled_sync_completed errors=%s uploaded=%s downloaded=%s renamed=%s",
+                        errors,
+                        summary.get("uploaded", 0),
+                        summary.get("downloaded", 0),
+                        summary.get("renamed", 0),
+                    )
+                except Exception as e:
+                    run_count = _as_int(_scheduler_state_snapshot().get("run_count"), 0) + 1
+                    _scheduler_state_update(
+                        last_finished_at=time.time(),
+                        last_result="failed",
+                        last_error=str(e),
+                        run_count=run_count,
+                    )
+                    logger.exception("scheduled_sync_failed: %s", e)
+                finally:
+                    SYNC_RUN_LOCK.release()
+                    next_run_at_ts = time.time() + effective_interval
+                    _scheduler_state_update(next_run_at=next_run_at_ts)
             except Exception as e:
-                run_count = _as_int(_scheduler_state_snapshot().get("run_count"), 0) + 1
                 _scheduler_state_update(
+                    initialized=True,
+                    enabled=False,
+                    configured_interval_sec=0,
+                    effective_interval_sec=0,
+                    next_run_at=None,
                     last_finished_at=time.time(),
                     last_result="failed",
-                    last_error=str(e),
-                    run_count=run_count,
+                    last_error=f"scheduler_loop_error:{e}",
                 )
-                logger.exception("scheduled_sync_failed: %s", e)
-            finally:
-                SYNC_RUN_LOCK.release()
-                next_run_at_ts = time.time() + effective_interval
-                _scheduler_state_update(next_run_at=next_run_at_ts)
+                logger.exception("scheduler_iteration_failed: %s", e)
+                await _wait_stop_or_timeout(stop_event, SCHEDULER_POLL_GRANULARITY_SEC)
     finally:
         _scheduler_state_update(running=False, next_run_at=None)
         logger.info("scheduler_stopped")
@@ -1298,6 +1322,12 @@ async def feishu_event_callback(request: Request, background: BackgroundTasks):
             _event_state["last_result"] = "disabled"
             _event_state["last_error"] = None
         return {"msg": "success", "queued": False, "reason": "event_callback_disabled"}
+
+    if not verify_token:
+        with EVENT_STATE_LOCK:
+            _event_state["last_result"] = "config_error"
+            _event_state["last_error"] = "event_verify_token_missing"
+        raise HTTPException(status_code=503, detail="event_verify_token_missing")
 
     if _event_seen_recently(event_id, now_ts):
         with EVENT_STATE_LOCK:
