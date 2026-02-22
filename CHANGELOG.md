@@ -35,3 +35,17 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 
 - 修复“最近同步异常”展示语义歧义（`run_id` 与异常条数混淆）。
 - 修复异常详情查看默认筛选不命中 `WARNING sync` 日志的问题。
+## [v0.2.1] - 2026-02-22
+
+### Added
+
+- TODO
+
+### Changed
+
+- TODO
+
+### Fixed
+
+- TODO
+
