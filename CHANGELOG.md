@@ -21,13 +21,17 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 
 ### Added
 
-- TODO
+- 工程化基础：`Makefile`、`.github/workflows/ci.yml`、基础单元测试。
+- 健康检查接口：`/api/healthz`、`/api/readyz`。
+- 发布与回滚脚本：`scripts/release.sh`、`scripts/rollback_release.sh`。
 
 ### Changed
 
-- TODO
+- UI 控制台重构：交互反馈、自动同步状态、异常详情入口、异常清空按钮。
+- CLI 能力扩展：`config-validate`、`service-status`、`logs-tail` 过滤、`run-once`。
+- 全量类型检查通过：`mypy app localfilesync`。
 
 ### Fixed
 
-- TODO
-
+- 修复“最近同步异常”展示语义歧义（`run_id` 与异常条数混淆）。
+- 修复异常详情查看默认筛选不命中 `WARNING sync` 日志的问题。

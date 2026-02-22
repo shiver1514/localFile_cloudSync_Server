@@ -6,8 +6,8 @@
 
 - 当前实现：`app/`
 - 服务单元模板：`deploy/systemd/localfile-cloudsync.service`
-- 切换脚本：`scripts/switch_m1_service.sh`
-- 旧版本备份：`feishu_sync_service_backup_20260221_1509/`
+- 运维脚本：`scripts/`
+- 文档入口：`docs/DOCS_INDEX_ZH.md`
 
 ## 快速启动
 
@@ -40,7 +40,8 @@ make rollback     # 查看回滚脚本用法
 
 ## 参考文档
 
-- 运行切换说明：`docs/M1_SWITCH.md`
+- 文档总览：`docs/DOCS_INDEX_ZH.md`
+- OpenClaw 项目记忆：`docs/OPENCLAW_AGENT_MEMORY_ZH.md`
 - 工程化路线：`docs/ENGINEERING_ROADMAP_ZH.md`
 - 发布手册：`docs/RELEASE_PLAYBOOK_ZH.md`
 - 变更模板：`docs/CHANGELOG_TEMPLATE.md`
