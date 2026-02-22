@@ -58,6 +58,8 @@
   - 远端删除模式：`sync.remote_delete_mode`（`recycle_bin` / `hard_delete`）
   - 远端空目录清理：`sync.cleanup_empty_remote_dirs`（可选）
   - 远端缺失目录递归删除：`sync.cleanup_remote_missing_dirs_recursive`（高风险可选）
+  - 飞书事件回调触发同步：`POST /api/events/feishu`（去抖 + 并发保护）
+  - 事件状态：`GET /api/status/event-callback`
   - 重命名/移动处理
   - 冲突策略（keep_both 等）
   - 重试队列

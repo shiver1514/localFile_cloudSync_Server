@@ -615,6 +615,23 @@ def home():
                 <input id="fCleanupRemoteMissingDirsRecursive" type="checkbox" style="width:auto;margin:0;" />
                 缺失目录递归删除（sync.cleanup_remote_missing_dirs_recursive）
               </label>
+              <label style="display:flex;align-items:center;gap:8px;">
+                <input id="fEventCallbackEnabled" type="checkbox" style="width:auto;margin:0;" />
+                启用飞书事件回调触发同步（sync.event_callback_enabled）
+              </label>
+              <label>事件验签 token（sync.event_verify_token）
+                <input id="fEventVerifyToken" autocomplete="off" />
+              </label>
+              <label>事件加密 key（sync.event_encrypt_key，可空）
+                <input id="fEventEncryptKey" type="password" autocomplete="off" />
+              </label>
+              <label>事件触发去抖（sync.event_debounce_sec，秒）
+                <input id="fEventDebounceSec" value="15" autocomplete="off" />
+                <div class="hint">建议 5-30 秒，降低高频事件下的重复同步。</div>
+              </label>
+              <label class="full">事件类型白名单（sync.event_trigger_types，一行一个，支持 * 通配）
+                <textarea id="fEventTriggerTypes" rows="6" placeholder="drive.file.edit_v1&#10;drive.file.title_updated_v1"></textarea>
+              </label>
               <label class="full">redirect_uri（授权回调地址）
                 <input id="fRedirectUri" value="https://open.feishu.cn/connect/confirm_success" autocomplete="off" />
               </label>
@@ -771,6 +788,13 @@ def home():
               </tbody>
             </table>
 
+            <h3>事件回调状态</h3>
+            <table class="kv" id="eventCallbackTable">
+              <tbody>
+                <tr><th>状态</th><td>获取中...</td></tr>
+              </tbody>
+            </table>
+
             <h3>最近一次同步摘要</h3>
             <table class="kv" id="runSummaryTable">
               <tbody>
@@ -826,6 +850,7 @@ def home():
         tree: true,
         feishu: true,
         scheduler: true,
+        eventCallback: true,
         service: true,
         runSummary: true,
         logs: true,
@@ -1050,6 +1075,14 @@ def home():
           document.getElementById("fRemoteDeleteMode").value = asText(data.sync && data.sync.remote_delete_mode, "recycle_bin");
           document.getElementById("fCleanupEmptyRemoteDirs").checked = !!(data.sync && data.sync.cleanup_empty_remote_dirs);
           document.getElementById("fCleanupRemoteMissingDirsRecursive").checked = !!(data.sync && data.sync.cleanup_remote_missing_dirs_recursive);
+          document.getElementById("fEventCallbackEnabled").checked = !!(data.sync && data.sync.event_callback_enabled);
+          document.getElementById("fEventVerifyToken").value = asText(data.sync && data.sync.event_verify_token, "");
+          document.getElementById("fEventEncryptKey").value = asText(data.sync && data.sync.event_encrypt_key, "");
+          document.getElementById("fEventDebounceSec").value = asText(data.sync && data.sync.event_debounce_sec, "15");
+          const eventTriggerTypes = Array.isArray(data.sync && data.sync.event_trigger_types)
+            ? data.sync.event_trigger_types.map((v) => asText(v, "")).filter((v) => !!v)
+            : [];
+          document.getElementById("fEventTriggerTypes").value = eventTriggerTypes.join("\\n");
 
           const schedulerMeta = data._scheduler || {};
           const configuredInterval = Number(data.sync && data.sync.poll_interval_sec || 0);
@@ -1066,6 +1099,11 @@ def home():
             ["sync.remote_delete_mode", asText(data.sync && data.sync.remote_delete_mode, "recycle_bin"), asText(data.sync && data.sync.remote_delete_mode, "recycle_bin") === "hard_delete" ? "value-warn" : ""],
             ["sync.cleanup_empty_remote_dirs", asYesNo(data.sync && data.sync.cleanup_empty_remote_dirs), (data.sync && data.sync.cleanup_empty_remote_dirs) ? "value-warn" : ""],
             ["sync.cleanup_remote_missing_dirs_recursive", asYesNo(data.sync && data.sync.cleanup_remote_missing_dirs_recursive), (data.sync && data.sync.cleanup_remote_missing_dirs_recursive) ? "value-warn" : ""],
+            ["sync.event_callback_enabled", asYesNo(data.sync && data.sync.event_callback_enabled), (data.sync && data.sync.event_callback_enabled) ? "value-good" : "value-warn"],
+            ["sync.event_verify_token", (data.sync && data.sync.event_verify_token) ? "已配置（隐藏）" : "未配置", (data.sync && data.sync.event_verify_token) ? "value-good" : "value-warn"],
+            ["sync.event_encrypt_key", (data.sync && data.sync.event_encrypt_key) ? "已配置（隐藏）" : "未配置", (data.sync && data.sync.event_encrypt_key) ? "value-good" : ""],
+            ["sync.event_debounce_sec", asText(data.sync && data.sync.event_debounce_sec, "15"), ""],
+            ["sync.event_trigger_types", eventTriggerTypes.length > 0 ? eventTriggerTypes.join(", ") : "(默认)", ""],
             ["sync.remote_recycle_bin", asText(data.sync && data.sync.remote_recycle_bin, "SyncRecycleBin"), ""],
             ["sync.auto_sync_enabled", configuredInterval > 0 ? "是" : "否", configuredInterval > 0 ? "value-good" : "value-warn"],
             ["sync.poll_interval_sec", asText(configuredInterval), configuredInterval > 0 ? "" : "value-warn"],
@@ -1104,6 +1142,17 @@ def home():
           setMsg("自动同步间隔必须是大于等于 0 的数字。", "warn");
           return false;
         }
+        const eventDebounceRaw = document.getElementById("fEventDebounceSec").value.trim();
+        const eventDebounce = Number(eventDebounceRaw || "15");
+        if (!Number.isFinite(eventDebounce) || eventDebounce < 0) {
+          setActionState("configState", "事件去抖秒数必须是大于等于 0 的数字。", "warn");
+          setMsg("事件去抖秒数必须是大于等于 0 的数字。", "warn");
+          return false;
+        }
+        const eventTriggerTypes = document.getElementById("fEventTriggerTypes").value
+          .split(/\\r?\\n/)
+          .map((line) => line.trim())
+          .filter((line) => !!line);
         const payload = {
           auth: {
             app_id: document.getElementById("fAppId").value.trim(),
@@ -1115,7 +1164,12 @@ def home():
             poll_interval_sec: Math.floor(pollInterval),
             remote_delete_mode: document.getElementById("fRemoteDeleteMode").value,
             cleanup_empty_remote_dirs: !!document.getElementById("fCleanupEmptyRemoteDirs").checked,
-            cleanup_remote_missing_dirs_recursive: !!document.getElementById("fCleanupRemoteMissingDirsRecursive").checked
+            cleanup_remote_missing_dirs_recursive: !!document.getElementById("fCleanupRemoteMissingDirsRecursive").checked,
+            event_callback_enabled: !!document.getElementById("fEventCallbackEnabled").checked,
+            event_verify_token: document.getElementById("fEventVerifyToken").value.trim(),
+            event_encrypt_key: document.getElementById("fEventEncryptKey").value.trim(),
+            event_debounce_sec: Math.floor(eventDebounce),
+            event_trigger_types: eventTriggerTypes
           },
           web_bind_host: document.getElementById("fWebHost").value.trim(),
           web_port: Number(document.getElementById("fWebPort").value.trim() || "8765")
@@ -1540,6 +1594,45 @@ def home():
         }
       }
 
+      async function refreshEventCallback() {
+        const firstLoad = consumeFirstLoad("eventCallback");
+        try {
+          const data = await api("GET", "/api/status/event-callback");
+          const rows = [
+            ["checked_at", toLocalTime(data.checked_at), ""],
+            ["enabled", asYesNo(data.enabled), data.enabled ? "value-good" : "value-warn"],
+            ["verify_token_configured", asYesNo(data.verify_token_configured), data.verify_token_configured ? "value-good" : "value-warn"],
+            ["encrypt_key_configured", asYesNo(data.encrypt_key_configured), data.encrypt_key_configured ? "value-good" : ""],
+            ["debounce_sec", asText(data.debounce_sec, "15"), ""],
+            ["trigger_types", Array.isArray(data.trigger_types) ? data.trigger_types.join(", ") : "-", ""],
+            ["pending", asYesNo(data.pending), data.pending ? "value-warn" : ""],
+            ["last_received_at", toLocalTime(data.last_received_at), ""],
+            ["last_event_type", asText(data.last_event_type), ""],
+            ["last_event_id", asText(data.last_event_id), ""],
+            ["last_result", asText(data.last_result), data.last_result === "failed" ? "value-bad" : (data.last_result === "warning" ? "value-warn" : "")],
+            ["last_error", data.last_error ? tErr(data.last_error) : "无", data.last_error ? "value-bad" : ""],
+            ["received / triggered", asText(data.received_count, "0") + " / " + asText(data.trigger_count, "0"), ""],
+            ["duplicate_count", asText(data.duplicate_count, "0"), Number(data.duplicate_count || 0) > 0 ? "value-warn" : ""],
+            ["skipped(debounce/pending/busy/unmatched/disabled)", asText(data.skipped_debounce_count, "0") + " / " + asText(data.skipped_pending_count, "0") + " / " + asText(data.skipped_busy_count, "0") + " / " + asText(data.skipped_unmatched_count, "0") + " / " + asText(data.skipped_disabled_count, "0"), ""]
+          ];
+          renderRows("eventCallbackTable", rows);
+          return true;
+        } catch (err) {
+          if (firstLoad) {
+            renderRows("eventCallbackTable", [
+              ["状态", "获取中，稍后自动重试", "value-warn"]
+            ]);
+            return true;
+          }
+          renderRows("eventCallbackTable", [
+            ["状态", "读取失败", "value-bad"],
+            ["错误", tErr(err.message), "value-bad"]
+          ]);
+          setMsg("读取事件回调状态失败：" + tErr(err.message), "danger");
+          return false;
+        }
+      }
+
       async function refreshService() {
         const firstLoad = consumeFirstLoad("service");
         try {
@@ -1748,7 +1841,7 @@ def home():
 
       async function refreshRuntime() {
         setActionState("runtimeState", "正在刷新运行状态...", "loading");
-        const results = await Promise.all([refreshFeishu(), refreshService(), refreshScheduler(), refreshRunSummary()]);
+        const results = await Promise.all([refreshFeishu(), refreshService(), refreshScheduler(), refreshEventCallback(), refreshRunSummary()]);
         const ok = results.every((v) => !!v);
         setActionState(
           "runtimeState",
@@ -1840,6 +1933,7 @@ def home():
       refreshAll({ initial: true });
       window.setInterval(() => {
         refreshScheduler().catch(() => {});
+        refreshEventCallback().catch(() => {});
       }, 15000);
     </script>
   </body>

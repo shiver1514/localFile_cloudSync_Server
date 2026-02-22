@@ -14,6 +14,18 @@ sync:
   remote_delete_mode: recycle_bin
   cleanup_empty_remote_dirs: false
   cleanup_remote_missing_dirs_recursive: false
+  event_callback_enabled: false
+  event_verify_token: ''
+  event_encrypt_key: ''
+  event_debounce_sec: 15
+  event_trigger_types:
+  - drive.file.edit_v1
+  - drive.file.title_updated_v1
+  - drive.file.created_in_folder_v1
+  - drive.file.deleted_v1
+  - drive.file.trashed_v1
+  - drive.file.bitable_record_changed_v1
+  - drive.file.bitable_field_changed_v1
   exclude_dirs:
   - .git
   - .sync_trash

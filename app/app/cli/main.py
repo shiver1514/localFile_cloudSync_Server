@@ -189,8 +189,16 @@ def status():
     table.add_row("token_file", str(token_path) if token_path else "(unset)")
     table.add_row("token_file_exists", "yes" if token_exists else "no")
     poll_interval = int(cfg.sync.poll_interval_sec or 0)
+    event_enabled = bool(getattr(cfg.sync, "event_callback_enabled", False))
+    event_debounce = int(getattr(cfg.sync, "event_debounce_sec", 15) or 0)
+    event_verify_token_set = bool(str(getattr(cfg.sync, "event_verify_token", "") or "").strip())
+    event_encrypt_key_set = bool(str(getattr(cfg.sync, "event_encrypt_key", "") or "").strip())
     table.add_row("auto_sync", "on" if poll_interval > 0 else "off")
     table.add_row("poll_interval_sec", str(poll_interval))
+    table.add_row("event_callback", "on" if event_enabled else "off")
+    table.add_row("event_verify_token", "set" if event_verify_token_set else "unset")
+    table.add_row("event_encrypt_key", "set" if event_encrypt_key_set else "unset")
+    table.add_row("event_debounce_sec", str(event_debounce))
     table.add_row("service", service_summary)
     table.add_row("db", cfg.database.path)
     table.add_row("log", cfg.logging.file)
@@ -218,6 +226,8 @@ def config_validate(
             "web_bind_host_configured": False,
             "web_port_valid": False,
             "poll_interval_valid": False,
+            "event_debounce_valid": False,
+            "event_trigger_types_valid": False,
             "database_parent_ready": False,
             "log_parent_ready": False,
         },
@@ -267,6 +277,21 @@ def config_validate(
         out["errors"].append(f"poll_interval_out_of_range: {poll_interval}")
     elif 0 < poll_interval < 10:
         out["warnings"].append(f"poll_interval_too_short: {poll_interval} (<10 may cause rate/risk)")
+
+    event_debounce = int(getattr(cfg.sync, "event_debounce_sec", 15) or 0)
+    out["checks"]["event_debounce_valid"] = 0 <= event_debounce <= 3600
+    if not out["checks"]["event_debounce_valid"]:
+        out["errors"].append(f"event_debounce_out_of_range: {event_debounce}")
+
+    trigger_types = getattr(cfg.sync, "event_trigger_types", []) or []
+    trigger_types_valid = isinstance(trigger_types, list) and all(str(item).strip() for item in trigger_types)
+    out["checks"]["event_trigger_types_valid"] = bool(trigger_types_valid)
+    if not out["checks"]["event_trigger_types_valid"]:
+        out["warnings"].append("event_trigger_types_empty_or_invalid")
+
+    if bool(getattr(cfg.sync, "event_callback_enabled", False)):
+        if not str(getattr(cfg.sync, "event_verify_token", "") or "").strip():
+            out["warnings"].append("event_callback_enabled_but_verify_token_missing")
 
     try:
         Path(cfg.database.path).parent.mkdir(parents=True, exist_ok=True)

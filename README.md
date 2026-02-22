@@ -168,6 +168,38 @@ sync:
   cleanup_remote_missing_dirs_recursive: true
 ```
 
+## 飞书事件回调加速（云端改动更快下发）
+
+为减少纯轮询延迟，支持飞书事件订阅回调触发同步。
+
+- 回调地址：`POST /api/events/feishu`
+- 状态接口：`GET /api/status/event-callback`
+- 建议与轮询并存：保留 `poll_interval_sec` 作为兜底，事件用于加速。
+
+配置项（`sync.*`）：
+
+- `event_callback_enabled`：是否启用事件触发同步。
+- `event_verify_token`：飞书事件订阅的 Verification Token。
+- `event_encrypt_key`：飞书事件订阅 Encrypt Key（可空，不加密可不填）。
+- `event_debounce_sec`：事件触发去抖秒数。
+- `event_trigger_types`：事件白名单（支持 `*` 通配）。
+
+示例：
+
+```yaml
+sync:
+  event_callback_enabled: true
+  event_verify_token: "<YOUR_VERIFY_TOKEN>"
+  event_encrypt_key: ""
+  event_debounce_sec: 15
+  event_trigger_types:
+  - drive.file.edit_v1
+  - drive.file.title_updated_v1
+  - drive.file.created_in_folder_v1
+  - drive.file.deleted_v1
+  - drive.file.trashed_v1
+```
+
 ## 健康检查接口
 
 - `GET /api/healthz`：进程存活检查（liveness）

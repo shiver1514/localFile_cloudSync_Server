@@ -99,6 +99,36 @@ cd app
 python -m localfilesync.cli.main config-validate --strict
 ```
 
+### 3.5 飞书事件订阅（推荐开启，降低轮询延迟）
+
+应用支持事件回调触发同步：
+
+- 回调接口：`POST /api/events/feishu`
+- 状态接口：`GET /api/status/event-callback`
+
+配置建议（`config.yaml`）：
+
+```yaml
+sync:
+  event_callback_enabled: true
+  event_verify_token: "<YOUR_VERIFY_TOKEN>"
+  event_encrypt_key: ""
+  event_debounce_sec: 15
+  event_trigger_types:
+  - drive.file.edit_v1
+  - drive.file.title_updated_v1
+  - drive.file.created_in_folder_v1
+  - drive.file.deleted_v1
+  - drive.file.trashed_v1
+```
+
+注意：
+
+- 回调地址必须是飞书可访问的公网 HTTPS 地址（反向代理到本服务）。
+- `event_verify_token` 需与飞书后台配置一致。
+- 若设置了 `event_encrypt_key`，需安装 `pycryptodome`（项目依赖已包含）。
+- 建议保留 `sync.poll_interval_sec` 作为兜底，事件回调仅用于加速。
+
 ## 4. 首次运行验证
 
 ### 4.1 本地前置检查（不访问远端）

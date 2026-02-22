@@ -36,6 +36,26 @@ class SyncConfig(BaseModel):
     cleanup_empty_remote_dirs: bool = False
     # When enabled, remove remote folders missing on local side together with nested files.
     cleanup_remote_missing_dirs_recursive: bool = False
+    # Event callback trigger for faster cloud->local sync.
+    event_callback_enabled: bool = False
+    # Feishu event subscription verification token.
+    event_verify_token: str = ""
+    # Feishu event subscription encrypt key (optional).
+    event_encrypt_key: str = ""
+    # Debounce seconds for event-triggered sync.
+    event_debounce_sec: int = Field(default=15, ge=0, le=3600)
+    # Event types/patterns that can trigger a sync, e.g. "drive.file.edit_v1" or "drive.file.*".
+    event_trigger_types: list[str] = Field(
+        default_factory=lambda: [
+            "drive.file.edit_v1",
+            "drive.file.title_updated_v1",
+            "drive.file.created_in_folder_v1",
+            "drive.file.deleted_v1",
+            "drive.file.trashed_v1",
+            "drive.file.bitable_record_changed_v1",
+            "drive.file.bitable_field_changed_v1",
+        ]
+    )
     exclude_dirs: list[str] = Field(default_factory=lambda: [
         ".git",
         ".sync_trash",
