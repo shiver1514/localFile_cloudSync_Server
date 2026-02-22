@@ -108,6 +108,31 @@ def _read_run_history(limit: int = 50) -> list[dict]:
     return out
 
 
+def _load_latest_run_summary() -> tuple[dict[str, Any] | None, str, str | None]:
+    """
+    Return latest run summary with source:
+    - last_run_once: runtime/last_run_once.json
+    - history_fallback: runtime/run_history.jsonl latest item
+    - none: no summary available
+    """
+    parse_error: str | None = None
+    if LAST_RUN_ONCE_PATH.exists():
+        try:
+            payload = json.loads(LAST_RUN_ONCE_PATH.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                return payload, "last_run_once", None
+            parse_error = "last_run_once_not_object"
+        except Exception as e:
+            parse_error = str(e)
+
+    items = _read_run_history(limit=1)
+    if items:
+        latest = items[0]
+        if isinstance(latest, dict):
+            return latest, "history_fallback", parse_error
+    return None, "none", parse_error
+
+
 def _as_int(value: object, default: int = 0) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -825,21 +850,16 @@ def scheduler_status():
 
 @router.get("/status/run-once")
 def last_run_once_status():
-    if not LAST_RUN_ONCE_PATH.exists():
-        return {"exists": False, "path": str(LAST_RUN_ONCE_PATH), "summary": None}
-    try:
-        return {
-            "exists": True,
-            "path": str(LAST_RUN_ONCE_PATH),
-            "summary": json.loads(LAST_RUN_ONCE_PATH.read_text(encoding="utf-8")),
-        }
-    except Exception as e:
-        return {
-            "exists": True,
-            "path": str(LAST_RUN_ONCE_PATH),
-            "summary": None,
-            "error": str(e),
-        }
+    summary, source, parse_error = _load_latest_run_summary()
+    out: dict[str, Any] = {
+        "exists": LAST_RUN_ONCE_PATH.exists(),
+        "path": str(LAST_RUN_ONCE_PATH),
+        "summary": summary,
+        "summary_source": source,
+    }
+    if parse_error:
+        out["error"] = parse_error
+    return out
 
 
 @router.get("/status/feishu")
@@ -920,16 +940,28 @@ def run_once():
 
 @router.post("/actions/clear-last-run")
 def clear_last_run():
-    """Clear last run summary marker used by runtime panel."""
+    """Clear error marker on latest run summary while keeping the record."""
     cleared = False
     try:
-        if LAST_RUN_ONCE_PATH.exists():
-            LAST_RUN_ONCE_PATH.unlink()
-            cleared = True
+        summary, source, parse_error = _load_latest_run_summary()
+        if summary and isinstance(summary, dict):
+            normalized = dict(summary)
+            has_error = bool(normalized.get("fatal_error")) or _as_int(normalized.get("errors", 0), 0) > 0
+            if has_error:
+                normalized["errors"] = 0
+                normalized.pop("fatal_error", None)
+                normalized["error_cleared_at"] = _now_iso()
+                normalized["error_cleared_by"] = "web_clear_last_run"
+                cleared = True
+            LAST_RUN_ONCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            LAST_RUN_ONCE_PATH.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
         return {
             "ok": True,
             "cleared": cleared,
             "path": str(LAST_RUN_ONCE_PATH),
+            "summary_source": source,
+            "summary_exists": bool(summary),
+            "parse_error": parse_error,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"clear_last_run_failed: {e}")

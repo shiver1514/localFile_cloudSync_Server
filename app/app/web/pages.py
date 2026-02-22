@@ -1457,15 +1457,22 @@ def home():
         }
       }
 
-      function renderRunSummary(summary) {
+      function runSummarySourceText(source) {
+        if (source === "last_run_once") return "最近摘要文件";
+        if (source === "history_fallback" || source === "history") return "历史记录回退";
+        return "未知";
+      }
+
+      function renderRunSummary(summary, source) {
         if (!summary) {
-          renderRows("runSummaryTable", [["状态", "暂无同步摘要（" + LAST_RUN_PATH + "）", ""]]);
+          renderRows("runSummaryTable", [["状态", "暂无同步摘要（等待首次同步完成）", ""]]);
           setTopStat("topLastRunState", "暂无记录", "warn");
           return;
         }
         const errors = Number(summary.errors || 0);
         const fatal = asText(summary.fatal_error, "");
         renderRows("runSummaryTable", [
+          ["summary_source", runSummarySourceText(asText(source, "last_run_once")), (source === "history_fallback" || source === "history") ? "value-warn" : ""],
           ["run_id", asText(summary.run_id), ""],
           ["local_root", asText(summary.local_root), ""],
           ["remote_root_token", asText(summary.remote_root_token), ""],
@@ -1486,7 +1493,21 @@ def home():
       async function refreshRunSummary() {
         try {
           const data = await api("GET", "/api/status/run-once");
-          renderRunSummary(data.summary || null);
+          let summary = data.summary || null;
+          let source = asText(data.summary_source, "last_run_once");
+
+          if (!summary) {
+            try {
+              const hist = await api("GET", "/api/history?limit=1");
+              const items = Array.isArray(hist.items) ? hist.items : [];
+              if (items.length > 0) {
+                summary = items[0];
+                source = "history";
+              }
+            } catch (_err) {}
+          }
+
+          renderRunSummary(summary, source);
           return true;
         } catch (err) {
           renderRows("runSummaryTable", [
@@ -1504,10 +1525,10 @@ def home():
           const data = await api("POST", "/api/actions/clear-last-run", {});
           await refreshRunSummary();
           if (data.cleared) {
-            setMsg("最近同步异常已清空。", "success");
+            setMsg("最近同步异常已清空，最近记录已保留。", "success");
             setActionState("runtimeState", "最近异常已清空（" + nowClock() + "）", "success");
           } else {
-            setMsg("最近同步摘要为空，无需清空。", "info");
+            setMsg("当前无异常可清空，最近记录已保留。", "info");
             setActionState("runtimeState", "当前无异常可清空（" + nowClock() + "）", "success");
           }
           return true;

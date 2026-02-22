@@ -4,6 +4,7 @@
 
 - 项目总览与常用命令：`README.md`
 - 变更日志：`CHANGELOG.md`
+- 飞书 API 映射：`docs/FEISHU_API_MAPPING_ZH.md`
 
 ## 2. 运维与发布
 

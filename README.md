@@ -124,6 +124,7 @@ make rollback     # 查看回滚脚本用法
 ## 参考文档
 
 - 文档总览：`docs/DOCS_INDEX_ZH.md`
+- 飞书 API 映射：`docs/FEISHU_API_MAPPING_ZH.md`
 - OpenClaw 项目记忆：`docs/OPENCLAW_AGENT_MEMORY_ZH.md`
 - 工程化路线：`docs/ENGINEERING_ROADMAP_ZH.md`
 - 发布手册：`docs/RELEASE_PLAYBOOK_ZH.md`
