@@ -17,3 +17,17 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 ### Fixed
 
 - 修复“异常 run_id 与异常条数”易混淆文案，统一为“第X次（异常/成功）”。
+## [v0.2.0] - 2026-02-22
+
+### Added
+
+- TODO
+
+### Changed
+
+- TODO
+
+### Fixed
+
+- TODO
+
