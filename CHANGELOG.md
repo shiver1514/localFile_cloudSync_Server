@@ -48,4 +48,17 @@ The format is based on Keep a Changelog and this project uses Semantic Versionin
 ### Fixed
 
 - TODO
+## [v0.2.2] - 2026-02-22
+
+### Added
+
+- TODO
+
+### Changed
+
+- TODO
+
+### Fixed
+
+- TODO
 
