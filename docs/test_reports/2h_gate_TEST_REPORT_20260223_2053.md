@@ -8,7 +8,7 @@
 - M0: SELFTEST-QA-CLOSELOOP（闭环链路健康）
 - M1: 删除链路复核第1轮：run-once --run-type qa_delete_recheck_1
 - M2: 删除链路复核第2轮：run-once --run-type qa_delete_recheck_2
-- 收口: 汇总 /api/status/run-once（口径：优先使用 127.0.0.1:8765；8000 仅作为历史口径或兼容别名，不作为默认验收端口）、service.log tail、历史关键证据复制
+- 收口: 汇总 /api/status/run-once（口径：仅使用 127.0.0.1:8765 作为验收端口）、service.log tail、历史关键证据复制
 
 ## 通过项 / 失败项
 - 通过: 两轮 run-once 均执行并落盘输出
@@ -25,7 +25,7 @@
 - 证据: /home/n150/openclaw_workspace/localFile_cloudSync_Server/docs/test_reports/artifacts/2h_gate_20260223_2053/run-once_qa_delete_recheck_1.out 与 /home/n150/openclaw_workspace/localFile_cloudSync_Server/docs/test_reports/artifacts/2h_gate_20260223_2053/run-once_qa_delete_recheck_2.out
 
 ## 已知限制与回滚建议
-- 限制(口径澄清): 本服务 Web 默认端口为 `web_port=8765`；验收与可观测性采集应以 `http://127.0.0.1:8765` 为准（Gate-2 脚本/命令统一使用 8765）。若环境额外提供 `8000`（例如反向代理/历史兼容别名），可作为辅助入口，但不得用其可达性来判定 API 不可用。
+- 限制(口径澄清): 本服务 Web 仅支持端口 `web_port=8765`；验收与可观测性采集应以 `http://127.0.0.1:8765` 为准（脚本/命令统一使用 8765）。
 - 回滚: 若上线后出现删除被拉回/语义漂移，建议停用 remote_wins（或切回上一个稳定策略/版本），并保留本次证据目录用于对照。
 
 ## 证据路径
