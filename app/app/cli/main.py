@@ -202,7 +202,9 @@ def status():
     table.add_row("service", service_summary)
     table.add_row("db", cfg.database.path)
     table.add_row("log", cfg.logging.file)
-    table.add_row("web", f"http://{cfg.web_bind_host}:{cfg.web_port}")
+    web_base_url = f"http://{cfg.web_bind_host}:{cfg.web_port}"
+    table.add_row("web", web_base_url)
+    table.add_row("web_observe", "Use 8765 as the official observable port")
     console.print(table)
 
 
